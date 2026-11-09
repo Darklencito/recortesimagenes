@@ -10,8 +10,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -19,7 +19,7 @@ jobs:
       - run: npm run electron:build:win
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-installer
           path: release/*
@@ -27,8 +27,8 @@ jobs:
   build-mac:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -36,7 +36,7 @@ jobs:
       - run: npm run electron:build:mac
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: mac-installer
           path: release/*
@@ -48,11 +48,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: windows-installer
           path: release-win
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: mac-installer
           path: release-mac
