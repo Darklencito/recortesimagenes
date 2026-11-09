@@ -21,6 +21,7 @@
   "build": {
     "appId": "pe.nodos.cortesmail",
     "productName": "Herramientas de Diseño Nodos",
+    "publish": null,
     "directories": {
       "output": "release"
     },
