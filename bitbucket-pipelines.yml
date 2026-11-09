@@ -1,0 +1,33 @@
+# Bitbucket Pipelines: web (build + test + lint) en runners Linux de Bitbucket Cloud.
+# Los instaladores de escritorio (.exe/.dmg) NO se pueden generar aquí (solo Linux).
+# Para eso usa GitHub Actions (desktop.yml) o runners self-hosted en Windows/macOS.
+
+image: node:22
+
+pipelines:
+  default:
+    - step:
+        name: Lint, test y build web
+        caches:
+          - node
+        script:
+          - npm ci
+          - npm run lint
+          - npm run test
+          - npm run build
+        artifacts:
+          - dist/**
+
+  branches:
+    main:
+      - step:
+          name: Lint, test y build web
+          caches:
+            - node
+          script:
+            - npm ci
+            - npm run lint
+            - npm run test
+            - npm run build
+          artifacts:
+            - dist/**
