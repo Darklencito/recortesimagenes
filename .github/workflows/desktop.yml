@@ -17,6 +17,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -32,7 +34,34 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run electron:build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: mac-installer
           path: release/*
+
+  create-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-win
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-installer
+          path: release-mac
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-win/*
+            release-mac/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
