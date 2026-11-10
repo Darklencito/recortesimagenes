@@ -13,6 +13,9 @@ dist-ssr
 release
 release2
 instalador
+installer/node_modules
+installer/release
+installer/dist
 *.local
 
 # Editor directories and files
