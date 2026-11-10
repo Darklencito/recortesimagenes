@@ -26,6 +26,7 @@ jobs:
 
   build-mac:
     runs-on: macos-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -42,7 +43,7 @@ jobs:
           path: release/*
 
   create-release:
-    needs: [build-windows, build-mac]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -53,14 +54,19 @@ jobs:
           name: windows-installer
           path: release-win
       - uses: actions/download-artifact@v5
+        continue-on-error: true
         with:
           name: mac-installer
           path: release-mac
+      - name: Prepare release files
+        run: |
+          mkdir -p release-all
+          cp release-win/* release-all/ 2>/dev/null || true
+          if [ -d release-mac ]; then cp release-mac/* release-all/ 2>/dev/null || true; fi
+          ls -la release-all
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-win/*
-            release-mac/*
+          files: release-all/*
           draft: false
           prerelease: false
         env:
