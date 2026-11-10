@@ -17,6 +17,7 @@
     .btn:hover{background:var(--accent2);transform:translateY(-1px)}
     .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
     .os-badge{display:inline-block;background:rgba(99,102,241,.15);color:var(--accent2);border:1px solid rgba(99,102,241,.3);border-radius:999px;padding:4px 12px;font-size:.8rem;font-weight:600;margin-bottom:20px}
+    .detecting{color:var(--muted);font-size:.85rem;margin-bottom:16px}
     .steps{margin-top:28px;text-align:left}
     .steps h3{font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:10px}
     .steps ol{list-style:none;counter-reset:s}
@@ -24,7 +25,8 @@
     .steps li::before{content:counter(s);flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(99,102,241,.2);color:var(--accent2);font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center}
     .footer{margin-top:32px;font-size:.75rem;color:var(--muted)}
     .footer a{color:var(--accent2);text-decoration:none}
-    .detecting{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
     @media(max-width:480px){.card{padding:28px 20px}h1{font-size:1.3rem}}
   </style>
 </head>
@@ -37,7 +39,7 @@
     <div id="detecting" class="detecting"></div>
     <a id="downloadBtn" class="btn" href="#" download>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span id="btnText">Descargar</span>
+      <span id="btnText">Cargando…</span>
     </a>
     <div class="steps">
       <h3>Después de descargar</h3>
@@ -49,7 +51,8 @@
   </div>
 
   <script>
-    const RELEASES = 'https://github.com/Darklencito/recortesimagenes/releases/latest';
+    const RELEASES_PAGE = 'https://github.com/Darklencito/recortesimagenes/releases/latest';
+    const API_URL = 'https://api.github.com/repos/Darklencito/recortesimagenes/releases/latest';
     const ua = navigator.userAgent.toLowerCase();
     const isMac = ua.includes('mac');
     const isWin = ua.includes('win');
@@ -62,38 +65,53 @@
     const steps = document.getElementById('stepsList');
 
     let os = 'desconocido';
-    let url = RELEASES;
-    let stepsHtml = '';
-
-    if (isWin) {
-      os = 'Windows';
-      url = 'https://github.com/Darklencito/recortesimagenes/releases/latest/download/nodos-cortes-win-x64.exe';
-      stepsHtml = `
-        <li>Haz doble clic en el instalador descargado.</li>
-        <li>La app se instala automáticamente (sin asistente).</li>
-        <li>Se abre sola al terminar. ¡Listo!</li>`;
-    } else if (isMac) {
-      os = 'macOS';
-      url = 'https://github.com/Darklencito/recortesimagenes/releases/latest/download/nodos-cortes-mac.dmg';
-      stepsHtml = `
-        <li>Abre el archivo .dmg descargado.</li>
-        <li>Arrastra la app a la carpeta Aplicaciones.</li>
-        <li>La primera vez: clic derecho → Abrir (Gatekeeper).</li>`;
-    } else if (isLinux) {
-      os = 'Linux';
-      url = RELEASES;
-      stepsHtml = `<li>Descarga el instalador desde la página de releases.</li>`;
-    } else {
-      os = 'tu sistema';
-      url = RELEASES;
-      stepsHtml = `<li>Descarga el instalador desde la página de releases.</li>`;
-    }
+    let osKey = '';
+    if (isWin) { os = 'Windows'; osKey = 'win'; }
+    else if (isMac) { os = 'macOS'; osKey = 'mac'; }
+    else if (isLinux) { os = 'Linux'; osKey = 'linux'; }
 
     badge.textContent = os;
-    btn.href = url;
-    btnText.textContent = `Descargar para ${os}`;
-    detecting.textContent = isWin || isMac ? 'Detectado automáticamente según tu sistema.' : 'No se detectó tu sistema; elige manualmente.';
+    btnText.innerHTML = '<span class="spinner"></span>Cargando…';
+
+    let stepsHtml = '';
+    if (isWin) stepsHtml = `
+      <li>Haz doble clic en el instalador descargado.</li>
+      <li>La app se instala automáticamente (sin asistente).</li>
+      <li>Se abre sola al terminar. ¡Listo!</li>`;
+    else if (isMac) stepsHtml = `
+      <li>Abre el archivo .dmg descargado.</li>
+      <li>Arrastra la app a la carpeta Aplicaciones.</li>
+      <li>La primera vez: clic derecho → Abrir (Gatekeeper).</li>`;
+    else stepsHtml = `<li>Descarga el instalador desde la página de releases.</li>`;
     steps.innerHTML = stepsHtml;
+    detecting.textContent = isWin || isMac ? 'Detectado automáticamente según tu sistema.' : 'No se detectó tu sistema; elige manualmente.';
+
+    // Obtener la URL de descarga real desde la API de GitHub
+    fetch(API_URL)
+      .then((r) => r.json())
+      .then((data) => {
+        const assets = data.assets || [];
+        // Buscar el asset que coincida con el OS
+        let asset = null;
+        if (osKey === 'win') asset = assets.find((a) => a.name.endsWith('.exe') && a.name.includes('win'));
+        else if (osKey === 'mac') asset = assets.find((a) => a.name.endsWith('.dmg'));
+        if (!asset && assets.length > 0) asset = assets[0];
+
+        if (asset) {
+          btn.href = asset.browser_download_url;
+          btnText.textContent = `Descargar para ${os}`;
+          detecting.textContent = `Versión ${data.tag_name || ''} · ${os}`;
+        } else {
+          btn.href = data.html_url || RELEASES_PAGE;
+          btnText.textContent = 'Ver releases';
+          detecting.textContent = 'No se encontró instalador para tu sistema.';
+        }
+      })
+      .catch(() => {
+        btn.href = RELEASES_PAGE;
+        btnText.textContent = 'Ver releases';
+        detecting.textContent = 'No se pudo obtener la versión. Abre la página de releases.';
+      });
   </script>
 </body>
 </html>
