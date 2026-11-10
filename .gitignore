@@ -13,6 +13,7 @@ dist-ssr
 release
 release2
 instalador
+instalador-custom
 installer/node_modules
 installer/release
 installer/dist
