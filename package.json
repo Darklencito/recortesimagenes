@@ -51,9 +51,6 @@
       "oneClick": true,
       "perMachine": false,
       "allowElevation": true,
-      "installerIcon": "public/icon-512.png",
-      "uninstallerIcon": "public/icon-512.png",
-      "installerHeaderIcon": "public/icon-512.png",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Herramientas de Diseño Nodos"
