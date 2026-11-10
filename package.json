@@ -25,16 +25,13 @@
     "directories": {
       "output": "release"
     },
-    "artifactName": "nodos-cortes-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist/**/*",
       "electron/**/*"
     ],
+    "artifactName": "nodos-cortes-${version}-${os}-${arch}.${ext}",
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
+      "target": ["nsis"],
       "icon": "public/icon-512.png"
     },
     "mac": {
