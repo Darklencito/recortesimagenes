@@ -119,9 +119,11 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const toastId = useRef(0);
   const notifId = useRef(0);
   const updateToastId = useRef<number | null>(null);
+  const checkToastId = useRef<number | null>(null);
 
   function addNotification(type: ToastType, message: string, action?: { label: string; onClick: () => void }) {
     const id = ++notifId.current;
@@ -352,10 +354,16 @@ export default function App() {
     if (!api) return;
     const unsubscribe = api.onUpdateStatus((data: any) => {
       switch (data?.status) {
-        case 'checking':
-          // silencioso
+        case 'checking': {
+          setCheckingUpdate(true);
+          if (checkToastId.current) removeToast(checkToastId.current);
+          const id = addToast('loading', 'Verificando actualizaciones…', { duration: 0, record: false });
+          checkToastId.current = id;
           break;
+        }
         case 'available': {
+          setCheckingUpdate(false);
+          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
           const id = addToast('info', `Nueva versión ${data.version ?? ''} disponible. Descargando…`, { duration: 0, record: true });
           updateToastId.current = id;
           break;
@@ -365,15 +373,17 @@ export default function App() {
           const msg = `Descargando actualización… ${data.percent ?? 0}%`;
           if (id) updateToast(id, { type: 'loading', message: msg, duration: 0 });
           else {
-            const newId = addToast('loading', msg, { duration: 0 });
+            const newId = addToast('loading', msg, { duration: 0, record: false });
             updateToastId.current = newId;
           }
           break;
         }
         case 'downloaded': {
+          setCheckingUpdate(false);
           const id = updateToastId.current;
           updateToastId.current = null;
           if (id) removeToast(id);
+          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
           addToast('success', `Actualización ${data.version ?? ''} lista.`, {
             action: { label: 'Reiniciar ahora', onClick: () => api.installUpdate() },
             duration: 0,
@@ -381,13 +391,19 @@ export default function App() {
           });
           break;
         }
-        case 'up-to-date':
-          addToast('success', 'Ya tienes la última versión.', { duration: 3000 });
+        case 'up-to-date': {
+          setCheckingUpdate(false);
+          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
+          addToast('success', 'Ya tienes la última versión.', { duration: 3000, record: false });
           break;
-        case 'error':
+        }
+        case 'error': {
+          setCheckingUpdate(false);
+          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
           console.warn('Auto-update error:', data?.message);
-          addToast('error', data?.message ? `Actualización: ${data.message}` : 'No se pudo verificar actualizaciones.', { duration: 6000 });
+          addToast('error', data?.message ? `Actualización: ${data.message}` : 'No se pudo verificar actualizaciones.', { duration: 6000, record: true });
           break;
+        }
       }
     });
     return () => unsubscribe?.();
@@ -640,8 +656,9 @@ export default function App() {
               open={notifOpen}
               onMarkAllRead={markAllRead}
               onClear={clearNotifications}
-              onToggle={() => setNotifOpen((o) => !o)}
-              onCheckUpdates={window.electronAPI ? () => window.electronAPI!.checkForUpdates() : undefined}
+              onClose={() => setNotifOpen(false)}
+              onCheckUpdates={window.electronAPI ? () => { setCheckingUpdate(true); window.electronAPI!.checkForUpdates(); } : undefined}
+              checking={checkingUpdate}
             />
           </div>
           {installPrompt && (
