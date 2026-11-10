@@ -57,7 +57,9 @@ app.whenReady().then(() => {
   }
 
   ipcMain.on('install-update', () => {
-    autoUpdater.quitAndInstall();
+    // Silencioso: reemplaza los archivos en el directorio de instalación
+    // sin mostrar el asistente del instalador. Reinicia la app al terminar.
+    autoUpdater.quitAndInstall(true, true);
   });
 
   ipcMain.on('check-for-updates', () => {
