@@ -516,7 +516,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200/70 bg-slate-950 text-white dark:border-slate-800">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6">
-          <img src="/logo-nodos-white.png" alt="nodos.pe" className="h-12 w-auto sm:h-14" />
+          <img src="./logo-nodos-white.png" alt="nodos.pe" className="h-12 w-auto sm:h-14" />
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Herramientas de Diseño Nodos</h1>
             <p className="text-sm text-slate-300">Sube, define cortes precisos y exporta en PNG, JPG o WEBP. Atajos: Ctrl+Enter dividir · Ctrl+D descargar · G/L cambiar modo.</p>
