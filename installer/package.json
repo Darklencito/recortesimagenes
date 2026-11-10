@@ -23,10 +23,11 @@
     ],
     "extraResources": [
       {
-        "from": "../instalador/nodos-cortes-1.0.3-win-x64.exe",
+        "from": "../release/nodos-cortes-*-win-x64.exe",
         "to": "installer.exe"
       }
     ],
+    "artifactName": "nodos-instalador-${version}-win-x64.exe",
     "win": {
       "target": "nsis",
       "icon": "assets/icon-1024.png"

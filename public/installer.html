@@ -93,8 +93,12 @@
         const assets = data.assets || [];
         // Buscar el asset que coincida con el OS
         let asset = null;
-        if (osKey === 'win') asset = assets.find((a) => a.name.endsWith('.exe') && a.name.includes('win'));
-        else if (osKey === 'mac') asset = assets.find((a) => a.name.endsWith('.dmg'));
+        if (osKey === 'win') {
+          // Preferir el instalador custom (branded) si existe
+          asset = assets.find((a) => a.name.includes('instalador')) || assets.find((a) => a.name.endsWith('.exe') && a.name.includes('win'));
+        } else if (osKey === 'mac') {
+          asset = assets.find((a) => a.name.endsWith('.dmg'));
+        }
         if (!asset && assets.length > 0) asset = assets[0];
 
         if (asset) {
