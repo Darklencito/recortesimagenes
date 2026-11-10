@@ -12,6 +12,15 @@ export interface ToastItem {
   duration?: number;
 }
 
+export interface NotificationItem {
+  id: number;
+  type: ToastType;
+  message: string;
+  timestamp: number;
+  read: boolean;
+  action?: { label: string; onClick: () => void };
+}
+
 const styles: Record<ToastType, string> = {
   success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200',
   info: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-200',

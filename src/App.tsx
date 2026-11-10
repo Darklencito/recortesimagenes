@@ -1,5 +1,7 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ToastContainer, type ToastItem, type ToastType } from './components/Toast';
+import { NotificationBell, NotificationPanel } from './components/NotificationPanel';
+import type { NotificationItem } from './components/Toast';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import type { CutMode, GridConfig, Guides, OutputFormat, ResizeConfig, SliceRect, SliceResult, SourceImage } from './types';
@@ -115,12 +117,21 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
   const toastId = useRef(0);
+  const notifId = useRef(0);
   const updateToastId = useRef<number | null>(null);
 
-  function addToast(type: ToastType, message: string, opts?: { action?: { label: string; onClick: () => void }; duration?: number }) {
+  function addNotification(type: ToastType, message: string, action?: { label: string; onClick: () => void }) {
+    const id = ++notifId.current;
+    setNotifications((prev) => [{ id, type, message, timestamp: Date.now(), read: false, action }, ...prev].slice(0, 50));
+  }
+
+  function addToast(type: ToastType, message: string, opts?: { action?: { label: string; onClick: () => void }; duration?: number; record?: boolean }) {
     const id = ++toastId.current;
     setToasts((prev) => [...prev, { id, type, message, action: opts?.action, duration: opts?.duration ?? (type === 'loading' ? 0 : 4000) }]);
+    if (opts?.record !== false && type !== 'loading') addNotification(type, message, opts?.action);
     return id;
   }
   function removeToast(id: number) {
@@ -129,10 +140,27 @@ export default function App() {
   function updateToast(id: number, patch: Partial<ToastItem>) {
     setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  function markAllRead() {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  }
+  function clearNotifications() {
+    setNotifications([]);
+  }
 
   const [draggingFile, setDraggingFile] = useState(false);
   const dragDepth = useRef(0);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    function onClick(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [notifOpen]);
 
   useEffect(() => {
     function onBeforeInstall(e: Event) {
@@ -328,7 +356,7 @@ export default function App() {
           // silencioso
           break;
         case 'available': {
-          const id = addToast('info', `Nueva versión ${data.version ?? ''} disponible. Descargando…`, { duration: 0 });
+          const id = addToast('info', `Nueva versión ${data.version ?? ''} disponible. Descargando…`, { duration: 0, record: true });
           updateToastId.current = id;
           break;
         }
@@ -349,6 +377,7 @@ export default function App() {
           addToast('success', `Actualización ${data.version ?? ''} lista.`, {
             action: { label: 'Reiniciar ahora', onClick: () => api.installUpdate() },
             duration: 0,
+            record: true,
           });
           break;
         }
@@ -604,6 +633,17 @@ export default function App() {
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Herramientas de Diseño Nodos</h1>
             <p className="text-sm text-slate-300">Sube, define cortes precisos y exporta en PNG, JPG o WEBP. Atajos: Ctrl+Enter dividir · Ctrl+D descargar · G/L cambiar modo.</p>
+          </div>
+          <div ref={notifRef} className="relative">
+            <NotificationBell unread={unreadCount} onClick={() => setNotifOpen((o) => !o)} />
+            <NotificationPanel
+              notifications={notifications}
+              unread={unreadCount}
+              open={notifOpen}
+              onMarkAllRead={markAllRead}
+              onClear={clearNotifications}
+              onToggle={() => setNotifOpen((o) => !o)}
+            />
           </div>
           {installPrompt && (
             <button
