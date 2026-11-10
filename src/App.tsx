@@ -385,10 +385,8 @@ export default function App() {
           addToast('success', 'Ya tienes la última versión.', { duration: 3000 });
           break;
         case 'error':
-          // no mostrar errores silenciosos de red en cada arranque
-          if (data?.message && /update/i.test(data.message)) {
-            addToast('error', 'No se pudo verificar actualizaciones.', { duration: 4000 });
-          }
+          console.warn('Auto-update error:', data?.message);
+          addToast('error', data?.message ? `Actualización: ${data.message}` : 'No se pudo verificar actualizaciones.', { duration: 6000 });
           break;
       }
     });
@@ -643,6 +641,7 @@ export default function App() {
               onMarkAllRead={markAllRead}
               onClear={clearNotifications}
               onToggle={() => setNotifOpen((o) => !o)}
+              onCheckUpdates={window.electronAPI ? () => window.electronAPI!.checkForUpdates() : undefined}
             />
           </div>
           {installPrompt && (

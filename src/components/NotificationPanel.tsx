@@ -8,6 +8,7 @@ interface Props {
   onClear: () => void;
   onToggle: () => void;
   open: boolean;
+  onCheckUpdates?: () => void;
 }
 
 const iconFor: Record<NotificationItem['type'], string> = {
@@ -57,7 +58,7 @@ export function NotificationBell({ unread, onClick }: { unread: number; onClick:
   );
 }
 
-export function NotificationPanel({ notifications, unread, onMarkAllRead, onClear, open }: Props) {
+export function NotificationPanel({ notifications, unread, onMarkAllRead, onClear, open, onCheckUpdates }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,6 +91,13 @@ export function NotificationPanel({ notifications, unread, onMarkAllRead, onClea
           )}
         </div>
       </div>
+      {onCheckUpdates && (
+        <div className="border-b border-slate-200 px-4 py-2 dark:border-slate-700">
+          <button type="button" onClick={onCheckUpdates} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+            Buscar actualizaciones
+          </button>
+        </div>
+      )}
       <div className="max-h-80 overflow-y-auto">
         {notifications.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">Sin notificaciones aún.</p>

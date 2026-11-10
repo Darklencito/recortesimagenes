@@ -60,6 +60,16 @@ app.whenReady().then(() => {
     autoUpdater.quitAndInstall();
   });
 
+  ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      try {
+        win.webContents.send('update-status', { status: 'error', message: err?.message || 'Error al verificar actualizaciones.' });
+      } catch {
+        /* ventana cerrada */
+      }
+    });
+  });
+
   ipcMain.handle('save-to-downloads', async (_event, name, data) => {
     const fs = require('node:fs');
     const path = require('node:path');

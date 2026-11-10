@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update-status', handler);
   },
   installUpdate: () => ipcRenderer.send('install-update'),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   saveToDownloads: (name, data) => ipcRenderer.invoke('save-to-downloads', name, data),
   isElectron: true,
 });
