@@ -18,10 +18,7 @@ function makeSourceCanvas(w = 200, h = 120) {
 }
 
 describe('renderSlices', () => {
-  let revokeSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
-    revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
     // Mock canvas 2D context + toBlob (jsdom no implementa toBlob real)
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
       drawImage: vi.fn(),
