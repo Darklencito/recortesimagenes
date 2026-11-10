@@ -38,13 +38,13 @@
     "artifactName": "nodos-cortes-${version}-${os}-${arch}.${ext}",
     "win": {
       "target": ["nsis"],
-      "icon": "public/icon-512.png"
+      "icon": "build/icon-1024.png"
     },
     "mac": {
       "target": [
         "dmg"
       ],
-      "icon": "public/icon-512.png",
+      "icon": "build/icon-1024.png",
       "category": "public.app-category.graphics-design"
     },
     "nsis": {

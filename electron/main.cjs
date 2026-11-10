@@ -14,6 +14,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Herramientas de Diseño Nodos',
+    icon: path.join(__dirname, '..', 'build', 'icon-1024.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

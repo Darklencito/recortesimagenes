@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Instalador — Herramientas de Diseño Nodos</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#f1f5f9; --muted:#94a3b8; --accent:#6366f1; --accent2:#818cf8; --success:#10b981; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;overflow:hidden}
+    body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;-webkit-app-region:drag}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:460px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.5);-webkit-app-region:no-drag}
+    .logo{height:48px;margin-bottom:18px}
+    h1{font-size:1.35rem;font-weight:700;margin-bottom:6px;letter-spacing:-.02em}
+    .subtitle{color:var(--muted);font-size:.9rem;margin-bottom:24px}
+    .status{color:var(--muted);font-size:.9rem;margin-bottom:18px;min-height:20px}
+    .progress-wrap{width:100%;height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-bottom:10px}
+    .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:999px;transition:width .3s ease}
+    .percent{font-size:.85rem;font-weight:600;color:var(--accent2);margin-bottom:24px}
+    .btn{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:13px 28px;font-size:1rem;font-weight:600;cursor:pointer;transition:background .15s,transform .1s}
+    .btn:hover{background:var(--accent2);transform:translateY(-1px)}
+    .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .btn-success{background:var(--success)}
+    .btn-success:hover{background:#34d399}
+    .icon-success{font-size:2.5rem;margin-bottom:12px;color:var(--success)}
+    .hidden{display:none}
+    .footer{margin-top:20px;font-size:.75rem;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="assets/icon-1024.png" alt="nodos.pe" class="logo" />
+    <h1>Herramientas de Diseño Nodos</h1>
+    <p class="subtitle">Instalador</p>
+
+    <div id="step-install">
+      <p id="status" class="status">Preparando instalación…</p>
+      <div class="progress-wrap"><div id="bar" class="progress-bar"></div></div>
+      <div id="percent" class="percent">0%</div>
+      <button id="btnInstall" class="btn" onclick="startInstall()">Instalar</button>
+    </div>
+
+    <div id="step-done" class="hidden">
+      <div class="icon-success">✓</div>
+      <h1>Instalación completa</h1>
+      <p class="subtitle">La aplicación se instaló correctamente.</p>
+      <button id="btnOpen" class="btn btn-success" onclick="openApp()">Abrir aplicación</button>
+    </div>
+
+    <div id="step-error" class="hidden">
+      <div class="icon-success" style="color:#ef4444">!</div>
+      <h1>Error de instalación</h1>
+      <p id="errorMsg" class="subtitle">Ocurrió un problema.</p>
+      <button class="btn" onclick="window.close()">Cerrar</button>
+    </div>
+
+    <div class="footer">nodos.pe · Herramientas de Diseño</div>
+  </div>
+
+  <script>
+    const api = window.installerAPI;
+    const statusEl = document.getElementById('status');
+    const bar = document.getElementById('bar');
+    const percent = document.getElementById('percent');
+    const stepInstall = document.getElementById('step-install');
+    const stepDone = document.getElementById('step-done');
+    const stepError = document.getElementById('step-error');
+    const errorMsg = document.getElementById('errorMsg');
+
+    let progressTimer = null;
+    let progress = 0;
+
+    function setProgress(p, msg) {
+      progress = Math.min(100, Math.max(0, p));
+      bar.style.width = progress + '%';
+      percent.textContent = Math.round(progress) + '%';
+      if (msg) statusEl.textContent = msg;
+    }
+
+    api.onStatus((data) => {
+      if (data.phase === 'preparing') {
+        setProgress(data.progress || 5, data.message);
+      } else if (data.phase === 'installing') {
+        setProgress(data.progress || progress, data.message);
+      } else if (data.phase === 'done') {
+        clearInterval(progressTimer);
+        setProgress(100, data.message);
+        setTimeout(() => {
+          stepInstall.classList.add('hidden');
+          stepDone.classList.remove('hidden');
+        }, 400);
+      } else if (data.phase === 'error') {
+        clearInterval(progressTimer);
+        stepInstall.classList.add('hidden');
+        stepError.classList.remove('hidden');
+        errorMsg.textContent = data.message || 'Ocurrió un problema.';
+      }
+    });
+
+    async function startInstall() {
+      document.getElementById('btnInstall').disabled = true;
+      statusEl.textContent = 'Iniciando…';
+      // progreso estimado animado
+      progressTimer = setInterval(() => {
+        if (progress < 92) {
+          progress += 0.6 + Math.random() * 0.8;
+          if (progress > 92) progress = 92;
+          setProgress(progress, 'Instalando archivos…');
+        }
+      }, 200);
+      const res = await api.startInstall();
+      clearInterval(progressTimer);
+      if (!res || !res.ok) {
+        stepInstall.classList.add('hidden');
+        stepError.classList.remove('hidden');
+        errorMsg.textContent = res?.message || 'La instalación falló.';
+      }
+    }
+
+    async function openApp() {
+      const res = await api.launchApp();
+      if (!res || !res.ok) {
+        alert(res?.message || 'No se pudo abrir la aplicación.');
+      }
+    }
+  </script>
+</body>
+</html>

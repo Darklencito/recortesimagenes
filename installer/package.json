@@ -1,0 +1,43 @@
+{
+  "name": "nodos-installer",
+  "version": "1.0.0",
+  "description": "Instalador branded de Herramientas de Diseño Nodos",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "npm run build:win",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "pe.nodos.installer",
+    "productName": "Instalador Nodos",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "index.html",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../instalador/nodos-cortes-1.0.3-win-x64.exe",
+        "to": "installer.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon-1024.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}
