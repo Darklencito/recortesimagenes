@@ -1,6 +1,9 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Menu } = require('electron');
 const path = require('node:path');
 const { autoUpdater } = require('electron-updater');
+
+// Sin barra de menú (File/Edit/View/Window) para que se vea como app nativa.
+Menu.setApplicationMenu(null);
 
 const isDev = !app.isPackaged;
 
