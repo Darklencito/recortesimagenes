@@ -661,7 +661,7 @@ export default function App() {
               checking={checkingUpdate}
             />
           </div>
-          <span className="hidden rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-slate-400 sm:inline-flex">
+          <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
             v{__APP_VERSION__}
           </span>
           {installPrompt && (
