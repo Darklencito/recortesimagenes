@@ -48,8 +48,25 @@
       "category": "public.app-category.graphics-design"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "installerIcon": "public/icon-512.png",
+      "uninstallerIcon": "public/icon-512.png",
+      "installerHeaderIcon": "public/icon-512.png",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Herramientas de Diseño Nodos"
+    },
+    "dmg": {
+      "background": "build/dmg-background.png",
+      "icon": "public/icon-512.png",
+      "iconSize": 100,
+      "contents": [
+        { "x": 180, "y": 200, "type": "file" },
+        { "x": 430, "y": 200, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 640, "height": 400 }
     }
   },
   "dependencies": {

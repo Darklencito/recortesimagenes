@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instalar — Herramientas de Diseño Nodos</title>
+  <link rel="icon" type="image/png" href="./icon-192.png" />
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#f1f5f9; --muted:#94a3b8; --accent:#6366f1; --accent2:#818cf8; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 32px;max-width:520px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+    .logo{height:56px;margin-bottom:20px}
+    h1{font-size:1.5rem;font-weight:700;margin-bottom:8px;letter-spacing:-.02em}
+    p{color:var(--muted);font-size:.95rem;line-height:1.5;margin-bottom:24px}
+    .btn{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:14px 28px;font-size:1rem;font-weight:600;cursor:pointer;transition:background .15s,transform .1s;text-decoration:none}
+    .btn:hover{background:var(--accent2);transform:translateY(-1px)}
+    .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .os-badge{display:inline-block;background:rgba(99,102,241,.15);color:var(--accent2);border:1px solid rgba(99,102,241,.3);border-radius:999px;padding:4px 12px;font-size:.8rem;font-weight:600;margin-bottom:20px}
+    .steps{margin-top:28px;text-align:left}
+    .steps h3{font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:10px}
+    .steps ol{list-style:none;counter-reset:s}
+    .steps li{counter-increment:s;display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;font-size:.85rem;color:var(--muted)}
+    .steps li::before{content:counter(s);flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(99,102,241,.2);color:var(--accent2);font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+    .footer{margin-top:32px;font-size:.75rem;color:var(--muted)}
+    .footer a{color:var(--accent2);text-decoration:none}
+    .detecting{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+    @media(max-width:480px){.card{padding:28px 20px}h1{font-size:1.3rem}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="./logo-nodos-white.png" alt="nodos.pe" class="logo" />
+    <h1>Herramientas de Diseño Nodos</h1>
+    <p>Corta imágenes y PDF con plantillas y guías precisas. Exporta en PNG, JPG o WEBP y empaqueta en ZIP.</p>
+    <div id="osBadge" class="os-badge">Detectando sistema…</div>
+    <div id="detecting" class="detecting"></div>
+    <a id="downloadBtn" class="btn" href="#" download>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span id="btnText">Descargar</span>
+    </a>
+    <div class="steps">
+      <h3>Después de descargar</h3>
+      <ol id="stepsList"></ol>
+    </div>
+    <div class="footer">
+      ¿Problemas? <a href="https://github.com/Darklencito/recortesimagenes/releases" target="_blank" rel="noopener">Ver todas las versiones</a>
+    </div>
+  </div>
+
+  <script>
+    const RELEASES = 'https://github.com/Darklencito/recortesimagenes/releases/latest';
+    const ua = navigator.userAgent.toLowerCase();
+    const isMac = ua.includes('mac');
+    const isWin = ua.includes('win');
+    const isLinux = ua.includes('linux');
+
+    const badge = document.getElementById('osBadge');
+    const btn = document.getElementById('downloadBtn');
+    const btnText = document.getElementById('btnText');
+    const detecting = document.getElementById('detecting');
+    const steps = document.getElementById('stepsList');
+
+    let os = 'desconocido';
+    let url = RELEASES;
+    let stepsHtml = '';
+
+    if (isWin) {
+      os = 'Windows';
+      url = 'https://github.com/Darklencito/recortesimagenes/releases/latest/download/nodos-cortes-win-x64.exe';
+      stepsHtml = `
+        <li>Haz doble clic en el instalador descargado.</li>
+        <li>La app se instala automáticamente (sin asistente).</li>
+        <li>Se abre sola al terminar. ¡Listo!</li>`;
+    } else if (isMac) {
+      os = 'macOS';
+      url = 'https://github.com/Darklencito/recortesimagenes/releases/latest/download/nodos-cortes-mac.dmg';
+      stepsHtml = `
+        <li>Abre el archivo .dmg descargado.</li>
+        <li>Arrastra la app a la carpeta Aplicaciones.</li>
+        <li>La primera vez: clic derecho → Abrir (Gatekeeper).</li>`;
+    } else if (isLinux) {
+      os = 'Linux';
+      url = RELEASES;
+      stepsHtml = `<li>Descarga el instalador desde la página de releases.</li>`;
+    } else {
+      os = 'tu sistema';
+      url = RELEASES;
+      stepsHtml = `<li>Descarga el instalador desde la página de releases.</li>`;
+    }
+
+    badge.textContent = os;
+    btn.href = url;
+    btnText.textContent = `Descargar para ${os}`;
+    detecting.textContent = isWin || isMac ? 'Detectado automáticamente según tu sistema.' : 'No se detectó tu sistema; elige manualmente.';
+    steps.innerHTML = stepsHtml;
+  </script>
+</body>
+</html>
