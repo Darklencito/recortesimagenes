@@ -1,11 +1,11 @@
-const { app, BrowserWindow, dialog, Menu } = require('electron');
+const { app, BrowserWindow, dialog, Menu, ipcMain } = require('electron');
 const path = require('node:path');
 const { autoUpdater } = require('electron-updater');
 
+const isDev = !app.isPackaged;
+
 // Sin barra de menú (File/Edit/View/Window) para que se vea como app nativa.
 Menu.setApplicationMenu(null);
-
-const isDev = !app.isPackaged;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -17,6 +17,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -34,27 +35,30 @@ app.whenReady().then(() => {
   if (!isDev) {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {
-      /* sin conexión o sin publicación: se ignora */
-    });
 
-    autoUpdater.on('update-available', () => {
-      win.webContents.send('update-available');
-    });
-    autoUpdater.on('update-downloaded', () => {
-      const choice = dialog.showMessageBoxSync(win, {
-        type: 'info',
-        buttons: ['Reiniciar ahora', 'Más tarde'],
-        defaultId: 0,
-        title: 'Actualización disponible',
-        message: 'Se descargó una nueva versión. ¿Reiniciar para instalarla?',
-      });
-      if (choice === 0) autoUpdater.quitAndInstall();
-    });
-    autoUpdater.on('error', () => {
-      /* errores de actualización no bloquean la app */
+    const send = (payload) => {
+      try {
+        win.webContents.send('update-status', payload);
+      } catch {
+        /* ventana cerrada */
+      }
+    };
+
+    autoUpdater.on('checking-for-update', () => send({ status: 'checking' }));
+    autoUpdater.on('update-available', (info) => send({ status: 'available', version: info?.version }));
+    autoUpdater.on('update-not-available', () => send({ status: 'up-to-date' }));
+    autoUpdater.on('download-progress', (p) => send({ status: 'downloading', percent: Math.round(p?.percent ?? 0) }));
+    autoUpdater.on('update-downloaded', (info) => send({ status: 'downloaded', version: info?.version }));
+    autoUpdater.on('error', (err) => send({ status: 'error', message: err?.message }));
+
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {
+      send({ status: 'error', message: 'No se pudo verificar actualizaciones.' });
     });
   }
+
+  ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

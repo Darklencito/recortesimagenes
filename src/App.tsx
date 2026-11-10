@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ToastContainer, type ToastItem, type ToastType } from './components/Toast';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import type { CutMode, GridConfig, Guides, OutputFormat, ResizeConfig, SliceRect, SliceResult, SourceImage } from './types';
@@ -113,6 +114,22 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastId = useRef(0);
+  const updateToastId = useRef<number | null>(null);
+
+  function addToast(type: ToastType, message: string, opts?: { action?: { label: string; onClick: () => void }; duration?: number }) {
+    const id = ++toastId.current;
+    setToasts((prev) => [...prev, { id, type, message, action: opts?.action, duration: opts?.duration ?? (type === 'loading' ? 0 : 4000) }]);
+    return id;
+  }
+  function removeToast(id: number) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
+  function updateToast(id: number, patch: Partial<ToastItem>) {
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
   const [draggingFile, setDraggingFile] = useState(false);
   const dragDepth = useRef(0);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -301,6 +318,55 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Eventos de actualización de la app de escritorio (Electron)
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    const unsubscribe = api.onUpdateStatus((data: any) => {
+      switch (data?.status) {
+        case 'checking':
+          // silencioso
+          break;
+        case 'available': {
+          const id = addToast('info', `Nueva versión ${data.version ?? ''} disponible. Descargando…`, { duration: 0 });
+          updateToastId.current = id;
+          break;
+        }
+        case 'downloading': {
+          const id = updateToastId.current;
+          const msg = `Descargando actualización… ${data.percent ?? 0}%`;
+          if (id) updateToast(id, { type: 'loading', message: msg, duration: 0 });
+          else {
+            const newId = addToast('loading', msg, { duration: 0 });
+            updateToastId.current = newId;
+          }
+          break;
+        }
+        case 'downloaded': {
+          const id = updateToastId.current;
+          updateToastId.current = null;
+          if (id) removeToast(id);
+          addToast('success', `Actualización ${data.version ?? ''} lista.`, {
+            action: { label: 'Reiniciar ahora', onClick: () => api.installUpdate() },
+            duration: 0,
+          });
+          break;
+        }
+        case 'up-to-date':
+          addToast('success', 'Ya tienes la última versión.', { duration: 3000 });
+          break;
+        case 'error':
+          // no mostrar errores silenciosos de red en cada arranque
+          if (data?.message && /update/i.test(data.message)) {
+            addToast('error', 'No se pudo verificar actualizaciones.', { duration: 4000 });
+          }
+          break;
+      }
+    });
+    return () => unsubscribe?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function clearSlices(next: SliceResult[]) {
     setSlices((prev) => {
       revokeSliceResults(prev);
@@ -427,6 +493,7 @@ export default function App() {
       const name = nextBatchZipName();
       saveAs(blob, name);
       setNotice(`Lote exportado: ${name} (${files.length} archivos).`);
+      addToast('success', `Lote exportado: ${name} (${files.length} archivos).`, { duration: 4000 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el lote. Revisa los archivos e inténtalo de nuevo.');
     } finally {
@@ -505,6 +572,7 @@ export default function App() {
       const { blob, name } = await buildZip();
       saveAs(blob, name);
       setNotice(`ZIP descargado: ${name}`);
+      addToast('success', `Descargado ${name} con éxito.`, { duration: 3500 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo generar el ZIP. Intenta de nuevo.');
     } finally {
@@ -640,6 +708,8 @@ export default function App() {
         )}
         <PreviewPanel slices={slices} dpi={source?.pdfDpi ?? 300} />
       </main>
+
+      <ToastContainer toasts={toasts} onClose={removeToast} />
 
       {draggingFile && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-[2px]">
