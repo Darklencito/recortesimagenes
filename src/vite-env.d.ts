@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __APP_VERSION__: string;
+
 interface ElectronAPI {
   onUpdateStatus: (callback: (data: any) => void) => () => void;
   installUpdate: () => void;
