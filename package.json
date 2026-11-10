@@ -37,7 +37,9 @@
     ],
     "artifactName": "nodos-cortes-${version}-${os}-${arch}.${ext}",
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon-1024.png"
     },
     "mac": {
@@ -60,10 +62,22 @@
       "icon": "public/icon-512.png",
       "iconSize": 100,
       "contents": [
-        { "x": 180, "y": 200, "type": "file" },
-        { "x": 430, "y": 200, "type": "link", "path": "/Applications" }
+        {
+          "x": 180,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 430,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
       ],
-      "window": { "width": 640, "height": 400 }
+      "window": {
+        "width": 640,
+        "height": 400
+      }
     }
   },
   "dependencies": {
@@ -85,6 +99,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
+    "jsdom": "^29.1.1",
     "oxlint": "^1.90.0",
     "tailwindcss": "^4.3.5",
     "typescript": "~7.0.2",
