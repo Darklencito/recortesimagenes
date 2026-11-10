@@ -53,20 +53,9 @@ jobs:
         with:
           name: windows-installer
           path: release-win
-      - uses: actions/download-artifact@v5
-        continue-on-error: true
-        with:
-          name: mac-installer
-          path: release-mac
-      - name: Prepare release files
-        run: |
-          mkdir -p release-all
-          cp release-win/* release-all/ 2>/dev/null || true
-          if [ -d release-mac ]; then cp release-mac/* release-all/ 2>/dev/null || true; fi
-          ls -la release-all
       - uses: softprops/action-gh-release@v2
         with:
-          files: release-all/*
+          files: release-win/*
           draft: false
           prerelease: false
         env:
