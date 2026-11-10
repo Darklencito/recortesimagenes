@@ -51,13 +51,16 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-installer
+          path: release
       - run: npm ci
       - name: Copy main installer for bundling
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path installer -Force | Out-Null
           Copy-Item release/nodos-cortes-*-win-x64.exe installer/ -Force
-          # Rename to the expected filename
           $f = Get-ChildItem installer/nodos-cortes-*-win-x64.exe | Select-Object -First 1
           Copy-Item $f.FullName installer/nodos-cortes-win-x64.exe -Force
       - name: Install installer deps
