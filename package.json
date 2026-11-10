@@ -1,7 +1,7 @@
 {
   "name": "cortesmail",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cortador de imágenes y PDF con plantillas, guías precisas y exportación en ZIP.",
   "author": "nodos.pe",
   "type": "module",
