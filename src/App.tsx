@@ -491,9 +491,17 @@ export default function App() {
       }
       const blob = await zip.generateAsync({ type: 'blob' });
       const name = nextBatchZipName();
-      saveAs(blob, name);
-      setNotice(`Lote exportado: ${name} (${files.length} archivos).`);
-      addToast('success', `Lote exportado: ${name} (${files.length} archivos).`, { duration: 4000 });
+      const api = window.electronAPI;
+      if (api?.saveToDownloads) {
+        const buf = await blob.arrayBuffer();
+        const r = await api.saveToDownloads(name, buf);
+        setNotice(`Lote guardado en Descargas: ${r.filename} (${files.length} archivos).`);
+        addToast('success', `Guardado en Descargas: ${r.filename} (${files.length} archivos).`, { duration: 4000 });
+      } else {
+        saveAs(blob, name);
+        setNotice(`Lote exportado: ${name} (${files.length} archivos).`);
+        addToast('success', `Lote exportado: ${name} (${files.length} archivos).`, { duration: 4000 });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el lote. Revisa los archivos e inténtalo de nuevo.');
     } finally {
@@ -570,9 +578,17 @@ export default function App() {
     setNotice(null);
     try {
       const { blob, name } = await buildZip();
-      saveAs(blob, name);
-      setNotice(`ZIP descargado: ${name}`);
-      addToast('success', `Descargado ${name} con éxito.`, { duration: 3500 });
+      const api = window.electronAPI;
+      if (api?.saveToDownloads) {
+        const buf = await blob.arrayBuffer();
+        const r = await api.saveToDownloads(name, buf);
+        setNotice(`ZIP guardado en Descargas: ${r.filename}`);
+        addToast('success', `Guardado en Descargas: ${r.filename}`, { duration: 4000 });
+      } else {
+        saveAs(blob, name);
+        setNotice(`ZIP descargado: ${name}`);
+        addToast('success', `Descargado ${name} con éxito.`, { duration: 3500 });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo generar el ZIP. Intenta de nuevo.');
     } finally {

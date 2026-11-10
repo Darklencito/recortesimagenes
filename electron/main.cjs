@@ -60,6 +60,25 @@ app.whenReady().then(() => {
     autoUpdater.quitAndInstall();
   });
 
+  ipcMain.handle('save-to-downloads', async (_event, name, data) => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const downloads = app.getPath('downloads');
+    let filename = name;
+    let target = path.join(downloads, filename);
+    let i = 1;
+    while (fs.existsSync(target)) {
+      const dot = filename.lastIndexOf('.');
+      const base = dot > 0 ? filename.slice(0, dot) : filename;
+      const ext = dot > 0 ? filename.slice(dot) : '';
+      filename = `${base} (${i})${ext}`;
+      target = path.join(downloads, filename);
+      i++;
+    }
+    fs.writeFileSync(target, Buffer.from(data));
+    return { path: target, filename };
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
