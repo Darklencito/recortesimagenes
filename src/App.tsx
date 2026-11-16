@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ToastContainer, type ToastItem, type ToastType } from './components/Toast';
-import { NotificationBell, NotificationPanel } from './components/NotificationPanel';
+import { NotificationBell, NotificationPanel, type UpdateStatusInfo } from './components/NotificationPanel';
 import type { NotificationItem } from './components/Toast';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -20,7 +20,7 @@ import { consumeCredits, fetchAccountStatus, type CreditRequestItem, type Credit
 import { applySpacing, computeSlicesFromGrid, computeSlicesFromGuides, guidesFromGrid, ZERO_SPACING } from './utils/slicing';
 import type { CutSpacing } from './utils/slicing';
 import { renderSlices, revokeSliceResults } from './utils/renderSlices';
-import { canvasToOutputBlob, cropAndResizeCanvas, type CropRect } from './utils/imageTransform';
+import { canvasToOutputBlob, cropAndResizeCanvas } from './utils/imageTransform';
 // pdfjs e loadImage se cargan bajo demanda (ver rasterizePdf / handlePaste).
 
 const DEFAULT_GRID: GridConfig = { rows: 1, cols: 2 };
@@ -58,9 +58,6 @@ export default function App() {
     }
   });
   const [source, setSource] = useState<SourceImage | null>(null);
-  const [originalSource, setOriginalSource] = useState<SourceImage | null>(null);
-  const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, width: 100, height: 100 });
-  const [cropAspect, setCropAspect] = useState<number | null>(null);
   const [targetDimensions, setTargetDimensions] = useState<{ width: number; height: number }>({ width: 100, height: 100 });
   const [lockAspect, setLockAspect] = useState(true);
   const [sharpen, setSharpen] = useState(true);
@@ -131,7 +128,9 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [activeTab, setActiveTab] = useState<'cut' | 'crop' | 'export' | 'presets'>('cut');
+  const [updateInfo, setUpdateInfo] = useState<UpdateStatusInfo>({ state: 'idle' });
+  const updateResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeTab, setActiveTab] = useState<'cut' | 'resize' | 'export' | 'presets'>('cut');
   const [previewOpen, setPreviewOpen] = useState(true);
   const [account, setAccount] = useState<UserAccount | null>(null);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
@@ -149,8 +148,6 @@ export default function App() {
   const prevReqStatus = useRef<Record<number, string>>({});
   const toastId = useRef(0);
   const notifId = useRef(0);
-  const updateToastId = useRef<number | null>(null);
-  const checkToastId = useRef<number | null>(null);
 
   async function refreshAccount() {
     const r = await fetchAccountStatus();
@@ -187,22 +184,50 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addNotification(type: ToastType, message: string, action?: { label: string; onClick: () => void }) {
+  function addNotification(
+    type: ToastType,
+    message: string,
+    action?: { label: string; onClick: () => void },
+    extra?: { subtitle?: string; badge?: string },
+  ) {
     const id = ++notifId.current;
-    setNotifications((prev) => [{ id, type, message, timestamp: Date.now(), read: false, action }, ...prev].slice(0, 50));
+    setNotifications((prev) => [
+      { id, type, message, subtitle: extra?.subtitle, badge: extra?.badge, timestamp: Date.now(), read: false, action },
+      ...prev,
+    ].slice(0, 50));
   }
 
-  function addToast(type: ToastType, message: string, opts?: { action?: { label: string; onClick: () => void }; duration?: number; record?: boolean }) {
+  function addToast(
+    type: ToastType,
+    message: string,
+    opts?: {
+      subtitle?: string;
+      badge?: string;
+      action?: { label: string; onClick: () => void };
+      duration?: number;
+      record?: boolean;
+    },
+  ) {
     const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, type, message, action: opts?.action, duration: opts?.duration ?? (type === 'loading' ? 0 : 4000) }]);
-    if (opts?.record !== false && type !== 'loading') addNotification(type, message, opts?.action);
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        type,
+        message,
+        subtitle: opts?.subtitle,
+        badge: opts?.badge,
+        action: opts?.action,
+        duration: opts?.duration ?? (type === 'loading' ? 0 : 4000),
+      },
+    ]);
+    if (opts?.record !== false && type !== 'loading') {
+      addNotification(type, message, opts?.action, { subtitle: opts?.subtitle, badge: opts?.badge });
+    }
     return id;
   }
   function removeToast(id: number) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  }
-  function updateToast(id: number, patch: Partial<ToastItem>) {
-    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }
   const unreadCount = notifications.filter((n) => !n.read).length;
   function markAllRead() {
@@ -414,61 +439,77 @@ export default function App() {
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
+    function clearResetTimer() {
+      if (updateResetTimer.current) {
+        clearTimeout(updateResetTimer.current);
+        updateResetTimer.current = null;
+      }
+    }
     const unsubscribe = api.onUpdateStatus((data: any) => {
       switch (data?.status) {
         case 'checking': {
+          clearResetTimer();
           setCheckingUpdate(true);
-          if (checkToastId.current) removeToast(checkToastId.current);
-          const id = addToast('loading', 'Verificando actualizaciones…', { duration: 0, record: false });
-          checkToastId.current = id;
+          setUpdateInfo({ state: 'checking' });
           break;
         }
         case 'available': {
+          clearResetTimer();
           setCheckingUpdate(false);
-          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
-          const id = addToast('info', `Nueva versión ${data.version ?? ''} disponible. Descargando…`, { duration: 0, record: true });
-          updateToastId.current = id;
+          setUpdateInfo({ state: 'available', version: data.version, percent: 0 });
+          addNotification('info', 'Nueva versión disponible', undefined, {
+            badge: data.version ? `v${data.version}` : undefined,
+            subtitle: 'Descargando en segundo plano…',
+          });
           break;
         }
         case 'downloading': {
-          const id = updateToastId.current;
-          const msg = `Descargando actualización… ${data.percent ?? 0}%`;
-          if (id) updateToast(id, { type: 'loading', message: msg, duration: 0 });
-          else {
-            const newId = addToast('loading', msg, { duration: 0, record: false });
-            updateToastId.current = newId;
-          }
+          clearResetTimer();
+          setCheckingUpdate(false);
+          setUpdateInfo({ state: 'downloading', version: data.version, percent: data.percent ?? 0 });
           break;
         }
         case 'downloaded': {
+          clearResetTimer();
           setCheckingUpdate(false);
-          const id = updateToastId.current;
-          updateToastId.current = null;
-          if (id) removeToast(id);
-          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
-          addToast('success', `Actualización ${data.version ?? ''} lista.`, {
+          setUpdateInfo({ state: 'downloaded', version: data.version });
+          addToast('success', 'Actualización lista', {
+            badge: data.version ? `v${data.version}` : undefined,
+            subtitle: 'Lista para instalar al reiniciar',
             action: { label: 'Reiniciar ahora', onClick: () => api.installUpdate() },
-            duration: 0,
+            duration: 8000,
             record: true,
           });
           break;
         }
         case 'up-to-date': {
+          clearResetTimer();
           setCheckingUpdate(false);
-          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
-          addToast('success', 'Ya tienes la última versión.', { duration: 3000, record: false });
+          setUpdateInfo({ state: 'up-to-date', version: data.version });
+          updateResetTimer.current = setTimeout(() => {
+            setUpdateInfo({ state: 'idle' });
+          }, 3200);
           break;
         }
         case 'error': {
+          clearResetTimer();
           setCheckingUpdate(false);
-          if (checkToastId.current) { removeToast(checkToastId.current); checkToastId.current = null; }
           console.warn('Auto-update error:', data?.message);
-          addToast('error', data?.message ? `Actualización: ${data.message}` : 'No se pudo verificar actualizaciones.', { duration: 6000, record: true });
+          setUpdateInfo({
+            state: 'error',
+            message: data?.message ? `Actualización: ${data.message}` : 'No se pudo verificar actualizaciones.',
+          });
+          updateResetTimer.current = setTimeout(() => {
+            setUpdateInfo({ state: 'idle' });
+          }, 4500);
           break;
         }
       }
     });
-    return () => unsubscribe?.();
+    return () => {
+      clearResetTimer();
+      unsubscribe?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -483,9 +524,6 @@ export default function App() {
     clearSlices([]);
     setError(null);
     setSource(next);
-    setOriginalSource(next);
-    setCrop({ x: 0, y: 0, width: next.width, height: next.height });
-    setCropAspect(null);
     setTargetDimensions({ width: next.width, height: next.height });
     setMode('grid');
     setGrid(DEFAULT_GRID);
@@ -509,8 +547,6 @@ export default function App() {
       }
       const nextSource = { ...source, canvas, width: canvas.width, height: canvas.height, pdfDpi: nextDpi, pdfPage: page, pdfNumPages: numPages };
       setSource(nextSource);
-      setOriginalSource(nextSource);
-      setCrop({ x: 0, y: 0, width: canvas.width, height: canvas.height });
       setTargetDimensions({ width: canvas.width, height: canvas.height });
       setGuides(guidesFromGrid(canvas.width, canvas.height, grid));
       setHistory({ past: [], future: [] });
@@ -521,72 +557,12 @@ export default function App() {
     }
   }
 
-  function handleWorkspaceCropChange(nextCrop: CropRect) {
-    const wasUnresized = targetDimensions.width === crop.width && targetDimensions.height === crop.height;
-    setCrop(nextCrop);
-    if (wasUnresized) {
-      setTargetDimensions({ width: nextCrop.width, height: nextCrop.height });
-    } else if (lockAspect) {
-      const ratio = nextCrop.width / Math.max(1, nextCrop.height);
-      setTargetDimensions({
-        width: targetDimensions.width,
-        height: Math.max(1, Math.round(targetDimensions.width / ratio)),
-      });
-    }
-  }
-
-  function handleApplyCropResizeToCanvas() {
-    if (!source) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const newCanvas = cropAndResizeCanvas(source.canvas, {
-        crop,
-        targetWidth: targetDimensions.width,
-        targetHeight: targetDimensions.height,
-        sharpen,
-      });
-      const nextSource: SourceImage = {
-        ...source,
-        canvas: newCanvas,
-        width: newCanvas.width,
-        height: newCanvas.height,
-      };
-      clearSlices([]);
-      setSource(nextSource);
-      setCrop({ x: 0, y: 0, width: newCanvas.width, height: newCanvas.height });
-      setTargetDimensions({ width: newCanvas.width, height: newCanvas.height });
-      setGuides(guidesFromGrid(newCanvas.width, newCanvas.height, grid));
-      setHistory({ past: [], future: [] });
-      setNotice(`Lienzo actualizado a ${newCanvas.width}×${newCanvas.height} px sin pérdida de nitidez.`);
-      addToast('success', `Imagen ajustada a ${newCanvas.width}×${newCanvas.height} px.`, { duration: 3500 });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo recortar o redimensionar la imagen.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function handleRestoreOriginalSource() {
-    if (!originalSource) return;
-    clearSlices([]);
-    setSource(originalSource);
-    setCrop({ x: 0, y: 0, width: originalSource.width, height: originalSource.height });
-    setCropAspect(null);
-    setTargetDimensions({ width: originalSource.width, height: originalSource.height });
-    setGuides(guidesFromGrid(originalSource.width, originalSource.height, grid));
-    setHistory({ past: [], future: [] });
-    setNotice(`Imagen original restaurada (${originalSource.width}×${originalSource.height} px).`);
-    addToast('info', 'Imagen original restaurada.', { duration: 3000 });
-  }
-
   async function handleDownloadSingleImage() {
     if (!source) return;
     setBusy(true);
     setError(null);
     try {
       const outCanvas = cropAndResizeCanvas(source.canvas, {
-        crop,
         targetWidth: targetDimensions.width,
         targetHeight: targetDimensions.height,
         background: format === 'image/jpeg' ? bgColor : null,
@@ -620,7 +596,6 @@ export default function App() {
     setError(null);
     try {
       const outCanvas = cropAndResizeCanvas(source.canvas, {
-        crop,
         targetWidth: targetDimensions.width,
         targetHeight: targetDimensions.height,
         sharpen,
@@ -630,7 +605,7 @@ export default function App() {
       setNotice(`Imagen (${outCanvas.width}×${outCanvas.height} px) copiada al portapapeles.`);
       addToast('success', `¡Copiada al portapapeles (${outCanvas.width}×${outCanvas.height} px)!`, { duration: 3000 });
     } catch {
-      setError('No se pudo copiar al portapapeles. Usa el botón Descargar imagen.');
+      setError('No se pudo copiar al portapapeles. Usa el botón Exportar imagen.');
     } finally {
       setBusy(false);
     }
@@ -893,6 +868,21 @@ export default function App() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            {updateInfo.state === 'downloaded' && window.electronAPI && (
+              <button
+                type="button"
+                onClick={() => window.electronAPI!.installUpdate()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                title="Reiniciar la aplicación para aplicar la actualización descargada"
+              >
+                <span className="flex h-2 w-2 rounded-full bg-emerald-400" />
+                <span>Actualización {updateInfo.version ? `v${updateInfo.version}` : ''} lista</span>
+                <span className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  Reiniciar
+                </span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
@@ -918,8 +908,10 @@ export default function App() {
                 onMarkAllRead={markAllRead}
                 onClear={clearNotifications}
                 onClose={() => setNotifOpen(false)}
-                onCheckUpdates={window.electronAPI ? () => { setCheckingUpdate(true); window.electronAPI!.checkForUpdates(); } : undefined}
+                onCheckUpdates={window.electronAPI ? () => { setCheckingUpdate(true); setUpdateInfo({ state: 'checking' }); window.electronAPI!.checkForUpdates(); } : undefined}
+                onInstallUpdate={window.electronAPI ? () => window.electronAPI!.installUpdate() : undefined}
                 checking={checkingUpdate}
+                updateInfo={updateInfo}
               />
             </div>
 
@@ -995,7 +987,7 @@ export default function App() {
                 <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
                   {([
                     { id: 'cut', label: '1. Cortes' },
-                    { id: 'crop', label: '2. Resize/Crop' },
+                    { id: 'resize', label: '2. Resize' },
                     { id: 'export', label: '3. Formato' },
                     { id: 'presets', label: `4. Presets (${presets.length})` },
                   ] as const).map((t) => (
@@ -1047,31 +1039,23 @@ export default function App() {
                   </>
                 )}
 
-                {activeTab === 'crop' && (
+                {activeTab === 'resize' && (
                   <CropResizePanel
                     source={source}
-                    crop={crop}
-                    cropAspect={cropAspect}
                     targetWidth={targetDimensions.width}
                     targetHeight={targetDimensions.height}
                     lockAspect={lockAspect}
                     sharpen={sharpen}
                     format={format}
                     quality={quality}
+                    background={bgColor}
                     dpi={source.pdfDpi ?? dpi}
-                    busy={busy}
-                    canRestoreOriginal={originalSource !== null && originalSource !== source}
-                    onCropChange={setCrop}
-                    onCropAspectChange={setCropAspect}
                     onTargetDimensionsChange={(width, height) => setTargetDimensions({ width, height })}
                     onLockAspectChange={setLockAspect}
                     onSharpenChange={setSharpen}
                     onFormatChange={setFormat}
                     onQualityChange={setQuality}
-                    onApplyToCanvas={handleApplyCropResizeToCanvas}
-                    onRestoreOriginal={handleRestoreOriginalSource}
-                    onDownloadSingle={handleDownloadSingleImage}
-                    onCopySingle={handleCopySingleImage}
+                    onBackgroundChange={setBgColor}
                   />
                 )}
 
@@ -1115,24 +1099,45 @@ export default function App() {
                     {error}
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDivide}
-                    disabled={busy}
-                    className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25"
-                  >
-                    {busy ? 'Procesando…' : 'Dividir (Ctrl+Enter)'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadZip}
-                    disabled={busy}
-                    className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {busy ? 'Procesando…' : 'Descargar ZIP'}
-                  </button>
-                </div>
+                {activeTab === 'resize' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopySingleImage}
+                      disabled={busy}
+                      className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25"
+                    >
+                      {busy ? 'Procesando…' : 'Copiar imagen'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadSingleImage}
+                      disabled={busy}
+                      className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy ? 'Procesando…' : `Exportar (${targetDimensions.width}×${targetDimensions.height})`}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDivide}
+                      disabled={busy}
+                      className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25"
+                    >
+                      {busy ? 'Procesando…' : 'Dividir (Ctrl+Enter)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadZip}
+                      disabled={busy}
+                      className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy ? 'Procesando…' : 'Descargar ZIP'}
+                    </button>
+                  </div>
+                )}
               </div>
             </aside>
 
@@ -1153,18 +1158,15 @@ export default function App() {
                   previewOpen={previewOpen}
                   slicesCount={slices.length}
                   onTogglePreview={() => setPreviewOpen((o) => !o)}
-                  cropMode={activeTab === 'crop'}
-                  cropRect={crop}
-                  cropAspect={cropAspect}
+                  resizeMode={activeTab === 'resize'}
                   targetDimensions={targetDimensions}
-                  onCropChange={handleWorkspaceCropChange}
-                  onToggleCropMode={() => setActiveTab((t) => (t === 'crop' ? 'cut' : 'crop'))}
+                  onToggleResizeMode={() => setActiveTab((t) => (t === 'resize' ? 'cut' : 'resize'))}
                 />
               </Suspense>
             </div>
 
-            {/* Derecha: Inspector de Cortes Generados */}
-            {previewOpen && (
+            {/* Derecha: Inspector de Cortes Generados (solo en modo cortes) */}
+            {previewOpen && activeTab !== 'resize' && (
               <div className="w-full shrink-0 lg:h-full lg:w-[290px] xl:w-[320px]">
                 <PreviewPanel
                   slices={slices}

@@ -4,7 +4,6 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import type { CutMode, GridConfig, Guides, SourceImage } from '../types';
 import { applySpacing, computeSlicesFromGrid, computeSlicesFromGuides, gridLinePositions, ZERO_SPACING } from '../utils/slicing';
 import type { CutSpacing } from '../utils/slicing';
-import type { CropRect } from '../utils/imageTransform';
 
 interface Props {
   source: SourceImage | null;
@@ -20,12 +19,9 @@ interface Props {
   previewOpen?: boolean;
   slicesCount?: number;
   onTogglePreview?: () => void;
-  cropMode?: boolean;
-  cropRect?: CropRect;
-  cropAspect?: number | null;
+  resizeMode?: boolean;
   targetDimensions?: { width: number; height: number };
-  onCropChange?: (rect: CropRect) => void;
-  onToggleCropMode?: () => void;
+  onToggleResizeMode?: () => void;
 }
 
 const toolBtn = 'inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
@@ -33,8 +29,6 @@ const toolBtn = 'inline-flex h-7 min-w-7 items-center justify-center rounded-lg 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
-
-type HandleId = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'w' | 'e';
 
 export function ImageWorkspace({
   source,
@@ -50,12 +44,9 @@ export function ImageWorkspace({
   previewOpen,
   slicesCount = 0,
   onTogglePreview,
-  cropMode = false,
-  cropRect,
-  cropAspect = null,
+  resizeMode = false,
   targetDimensions,
-  onCropChange,
-  onToggleCropMode,
+  onToggleResizeMode,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -138,8 +129,6 @@ export function ImageWorkspace({
   const baseSlices = mode === 'grid' ? computeSlicesFromGrid(source.width, source.height, grid) : computeSlicesFromGuides(source.width, source.height, guides);
   const slices = applySpacing(baseSlices, source.width, source.height, spacing);
 
-  const activeCrop: CropRect = cropRect ?? { x: 0, y: 0, width: source.width, height: source.height };
-
   function snap(value: number, total: number): number {
     const tol = Math.max(3, Math.round(6 / ds));
     for (const f of [0.25, 1 / 3, 0.5, 2 / 3, 0.75]) {
@@ -174,7 +163,7 @@ export function ImageWorkspace({
   }
 
   function addGuidesAt(dispX: number, dispY: number) {
-    if (cropMode || mode !== 'guides' || panMode) return;
+    if (resizeMode || mode !== 'guides' || panMode) return;
     const x = clamp(toSource(dispX), 1, source!.width - 1);
     const y = clamp(toSource(dispY), 1, source!.height - 1);
     const xs = Array.from(new Set([...guides.xs, x])).sort((a, b) => a - b);
@@ -188,45 +177,6 @@ export function ImageWorkspace({
   function deleteHorizontal(i: number, e: KonvaEventObject<MouseEvent>) {
     e.cancelBubble = true;
     onGuidesChange({ ...guides, ys: guides.ys.filter((_, idx) => idx !== i) });
-  }
-
-  function handleCropHandleDrag(handle: HandleId, dispX: number, dispY: number) {
-    if (!onCropChange || !source) return;
-    const sx = clamp(toSource(dispX), 0, source.width);
-    const sy = clamp(toSource(dispY), 0, source.height);
-    const minSize = 10;
-
-    let left = activeCrop.x;
-    let top = activeCrop.y;
-    let right = activeCrop.x + activeCrop.width;
-    let bottom = activeCrop.y + activeCrop.height;
-
-    if (handle.includes('w')) left = clamp(sx, 0, right - minSize);
-    if (handle.includes('e')) right = clamp(sx, left + minSize, source.width);
-    if (handle.includes('n')) top = clamp(sy, 0, bottom - minSize);
-    if (handle.includes('s')) bottom = clamp(sy, top + minSize, source.height);
-
-    let width = Math.max(minSize, right - left);
-    let height = Math.max(minSize, bottom - top);
-
-    if (cropAspect && cropAspect > 0) {
-      if (handle === 'n' || handle === 's') {
-        width = clamp(Math.round(height * cropAspect), minSize, source.width - left);
-        height = Math.max(minSize, Math.round(width / cropAspect));
-      } else {
-        height = clamp(Math.round(width / cropAspect), minSize, source.height - top);
-        width = Math.max(minSize, Math.round(height * cropAspect));
-      }
-      if (handle.includes('w')) left = clamp(right - width, 0, source.width - width);
-      if (handle.includes('n')) top = clamp(bottom - height, 0, source.height - height);
-    }
-
-    onCropChange({
-      x: clamp(left, 0, source.width - width),
-      y: clamp(top, 0, source.height - height),
-      width,
-      height,
-    });
   }
 
   function onPanDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -256,38 +206,17 @@ export function ImageWorkspace({
     }
   }
 
-  const cx = toDisplay(activeCrop.x);
-  const cy = toDisplay(activeCrop.y);
-  const cw = toDisplay(activeCrop.width);
-  const ch = toDisplay(activeCrop.height);
-  const handleSize = 10;
-  const halfH = handleSize / 2;
-
-  const cropHandles: Array<{ id: HandleId; x: number; y: number }> = [
-    { id: 'nw', x: cx, y: cy },
-    { id: 'ne', x: cx + cw, y: cy },
-    { id: 'sw', x: cx, y: cy + ch },
-    { id: 'se', x: cx + cw, y: cy + ch },
-    { id: 'n', x: cx + cw / 2, y: cy },
-    { id: 's', x: cx + cw / 2, y: cy + ch },
-    { id: 'w', x: cx, y: cy + ch / 2 },
-    { id: 'e', x: cx + cw, y: cy + ch / 2 },
-  ];
-
   return (
     <section className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-3.5 py-2 dark:border-slate-800 dark:bg-slate-900/80">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Lienzo</span>
           <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {source.width} × {source.height} px{source.pdfDpi ? ` · ${source.pdfDpi} DPI` : ''}
+            Original: {source.width} × {source.height} px{source.pdfDpi ? ` · ${source.pdfDpi} DPI` : ''}
           </span>
-          {cropMode ? (
+          {resizeMode ? (
             <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300" aria-live="polite">
-              Recorte: {activeCrop.width} × {activeCrop.height} px
-              {targetDimensions && (targetDimensions.width !== activeCrop.width || targetDimensions.height !== activeCrop.height)
-                ? ` → Resize: ${targetDimensions.width} × ${targetDimensions.height} px`
-                : ''}
+              Nuevo tamaño: {targetDimensions?.width ?? source.width} × {targetDimensions?.height ?? source.height} px
             </span>
           ) : (
             <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300" aria-live="polite">
@@ -297,17 +226,17 @@ export function ImageWorkspace({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {onToggleCropMode && (
+          {onToggleResizeMode && (
             <button
               type="button"
-              onClick={onToggleCropMode}
-              className={`${toolBtn} gap-1 ${cropMode ? '!border-indigo-600 !bg-indigo-600 !text-white' : ''}`}
-              title="Recortar o redimensionar la imagen sin perder calidad"
+              onClick={onToggleResizeMode}
+              className={`${toolBtn} gap-1 ${resizeMode ? '!border-indigo-600 !bg-indigo-600 !text-white' : ''}`}
+              title="Cambiar a modo Redimensionar imagen (sin cortar en partes)"
             >
-              <span>✂ Recortar / Resize</span>
+              <span>⇔ Resize</span>
             </button>
           )}
-          {(onUndo || onRedo) && (
+          {!resizeMode && (onUndo || onRedo) && (
             <div className="mr-1 flex items-center gap-1 border-r border-slate-200 pr-2 dark:border-slate-700">
               <button type="button" className={toolBtn} disabled={!canUndo} onClick={onUndo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
                 ↶
@@ -330,7 +259,7 @@ export function ImageWorkspace({
           >
             Mano
           </button>
-          {onTogglePreview && (
+          {!resizeMode && onTogglePreview && (
             <button
               type="button"
               onClick={onTogglePreview}
@@ -359,150 +288,82 @@ export function ImageWorkspace({
       >
         <div className="relative m-auto shrink-0 shadow-md ring-1 ring-slate-900/10 dark:ring-white/10" style={{ width: dw, height: dh }}>
           <canvas ref={canvasRef} className="block rounded-sm bg-white" />
-          <Stage
-            width={dw}
-            height={dh}
-            className="absolute left-0 top-0"
-            onDblClick={(e) => {
-              const pos = e.target.getStage()?.getPointerPosition();
-              if (pos) addGuidesAt(pos.x, pos.y);
-            }}
-          >
-            <Layer>
-              {!cropMode && slices.map((s, i) => (
-                <Rect key={i} x={toDisplay(s.x)} y={toDisplay(s.y)} width={Math.max(0, toDisplay(s.width))} height={Math.max(0, toDisplay(s.height))} stroke="rgba(79,70,229,0.55)" strokeWidth={1} listening={false} />
-              ))}
-              {!cropMode && mode === 'grid' && gridLines.xs.map((x, i) => (
-                <Line key={`gx${i}`} points={[toDisplay(x), 0, toDisplay(x), dh]} stroke="rgba(244,63,94,0.9)" strokeWidth={1.5} dash={[6, 4]} listening={false} />
-              ))}
-              {!cropMode && mode === 'grid' && gridLines.ys.map((y, i) => (
-                <Line key={`gy${i}`} points={[0, toDisplay(y), dw, toDisplay(y)]} stroke="rgba(244,63,94,0.9)" strokeWidth={1.5} dash={[6, 4]} listening={false} />
-              ))}
-              {!cropMode && mode === 'guides' && guides.xs.map((x, i) => (
-                <Line
-                  key={`vx${x}-${i}`}
-                  x={toDisplay(x)}
-                  y={0}
-                  points={[0, 0, 0, dh]}
-                  stroke="#f43f5e"
-                  strokeWidth={2}
-                  draggable={!panMode}
-                  tabIndex={0}
-                  aria-label={`Guía vertical en ${x} px. Usa flechas para mover, Supr para eliminar.`}
-                  dragBoundFunc={(pos) => ({ x: clamp(pos.x, toDisplay(1), toDisplay(source.width - 1)), y: 0 })}
-                  onDragEnd={(e) => dragVertical(i, e)}
-                  onDblClick={(e) => deleteVertical(i, e)}
-                  onKeyDown={(e: KeyboardEvent) => {
-                    const step = e.shiftKey ? 10 : 1;
-                    if (e.key === 'ArrowLeft') { e.preventDefault(); moveVertical(i, -step); }
-                    else if (e.key === 'ArrowRight') { e.preventDefault(); moveVertical(i, step); }
-                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteVertical(i, e as unknown as KonvaEventObject<MouseEvent>); }
-                  }}
-                  hitStrokeWidth={16}
-                />
-              ))}
-              {!cropMode && mode === 'guides' && guides.ys.map((y, i) => (
-                <Line
-                  key={`hy${y}-${i}`}
-                  x={0}
-                  y={toDisplay(y)}
-                  points={[0, 0, dw, 0]}
-                  stroke="#f43f5e"
-                  strokeWidth={2}
-                  draggable={!panMode}
-                  tabIndex={0}
-                  aria-label={`Guía horizontal en ${y} px. Usa flechas para mover, Supr para eliminar.`}
-                  dragBoundFunc={(pos) => ({ x: 0, y: clamp(pos.y, toDisplay(1), toDisplay(source.height - 1)) })}
-                  onDragEnd={(e) => dragHorizontal(i, e)}
-                  onDblClick={(e) => deleteHorizontal(i, e)}
-                  onKeyDown={(e: KeyboardEvent) => {
-                    const step = e.shiftKey ? 10 : 1;
-                    if (e.key === 'ArrowUp') { e.preventDefault(); moveHorizontal(i, -step); }
-                    else if (e.key === 'ArrowDown') { e.preventDefault(); moveHorizontal(i, step); }
-                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteHorizontal(i, e as unknown as KonvaEventObject<MouseEvent>); }
-                  }}
-                  hitStrokeWidth={16}
-                />
-              ))}
-
-              {/* MODO RECORTAR / RESIZE INTERACTIVO */}
-              {cropMode && (
-                <>
-                  {/* Máscara oscura exterior (4 zonas) */}
-                  <Rect x={0} y={0} width={dw} height={Math.max(0, cy)} fill="rgba(15,23,42,0.58)" listening={false} />
-                  <Rect x={0} y={cy + ch} width={dw} height={Math.max(0, dh - (cy + ch))} fill="rgba(15,23,42,0.58)" listening={false} />
-                  <Rect x={0} y={cy} width={Math.max(0, cx)} height={Math.max(0, ch)} fill="rgba(15,23,42,0.58)" listening={false} />
-                  <Rect x={cx + cw} y={cy} width={Math.max(0, dw - (cx + cw))} height={Math.max(0, ch)} fill="rgba(15,23,42,0.58)" listening={false} />
-
-                  {/* Área arrastrable de recorte */}
-                  <Rect
-                    x={cx}
-                    y={cy}
-                    width={Math.max(1, cw)}
-                    height={Math.max(1, ch)}
-                    stroke="#6366f1"
+          {!resizeMode && (
+            <Stage
+              width={dw}
+              height={dh}
+              className="absolute left-0 top-0"
+              onDblClick={(e) => {
+                const pos = e.target.getStage()?.getPointerPosition();
+                if (pos) addGuidesAt(pos.x, pos.y);
+              }}
+            >
+              <Layer>
+                {slices.map((s, i) => (
+                  <Rect key={i} x={toDisplay(s.x)} y={toDisplay(s.y)} width={Math.max(0, toDisplay(s.width))} height={Math.max(0, toDisplay(s.height))} stroke="rgba(79,70,229,0.55)" strokeWidth={1} listening={false} />
+                ))}
+                {mode === 'grid' && gridLines.xs.map((x, i) => (
+                  <Line key={`gx${i}`} points={[toDisplay(x), 0, toDisplay(x), dh]} stroke="rgba(244,63,94,0.9)" strokeWidth={1.5} dash={[6, 4]} listening={false} />
+                ))}
+                {mode === 'grid' && gridLines.ys.map((y, i) => (
+                  <Line key={`gy${i}`} points={[0, toDisplay(y), dw, toDisplay(y)]} stroke="rgba(244,63,94,0.9)" strokeWidth={1.5} dash={[6, 4]} listening={false} />
+                ))}
+                {mode === 'guides' && guides.xs.map((x, i) => (
+                  <Line
+                    key={`vx${x}-${i}`}
+                    x={toDisplay(x)}
+                    y={0}
+                    points={[0, 0, 0, dh]}
+                    stroke="#f43f5e"
                     strokeWidth={2}
-                    draggable={!panMode && !!onCropChange}
-                    dragBoundFunc={(pos) => ({
-                      x: clamp(pos.x, 0, Math.max(0, dw - cw)),
-                      y: clamp(pos.y, 0, Math.max(0, dh - ch)),
-                    })}
-                    onDragMove={(e) => {
-                      if (!onCropChange) return;
-                      const nx = clamp(toSource(e.target.x()), 0, source.width - activeCrop.width);
-                      const ny = clamp(toSource(e.target.y()), 0, source.height - activeCrop.height);
-                      onCropChange({ ...activeCrop, x: nx, y: ny });
+                    draggable={!panMode}
+                    tabIndex={0}
+                    aria-label={`Guía vertical en ${x} px. Usa flechas para mover, Supr para eliminar.`}
+                    dragBoundFunc={(pos) => ({ x: clamp(pos.x, toDisplay(1), toDisplay(source.width - 1)), y: 0 })}
+                    onDragEnd={(e) => dragVertical(i, e)}
+                    onDblClick={(e) => deleteVertical(i, e)}
+                    onKeyDown={(e: KeyboardEvent) => {
+                      const step = e.shiftKey ? 10 : 1;
+                      if (e.key === 'ArrowLeft') { e.preventDefault(); moveVertical(i, -step); }
+                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveVertical(i, step); }
+                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteVertical(i, e as unknown as KonvaEventObject<MouseEvent>); }
                     }}
-                    onDragEnd={(e) => {
-                      if (!onCropChange) return;
-                      const nx = clamp(toSource(e.target.x()), 0, source.width - activeCrop.width);
-                      const ny = clamp(toSource(e.target.y()), 0, source.height - activeCrop.height);
-                      onCropChange({ ...activeCrop, x: nx, y: ny });
-                    }}
+                    hitStrokeWidth={16}
                   />
-
-                  {/* Regla de los tercios dentro del recorte */}
-                  <Line points={[cx + cw / 3, cy, cx + cw / 3, cy + ch]} stroke="rgba(255,255,255,0.5)" strokeWidth={1} dash={[4, 4]} listening={false} />
-                  <Line points={[cx + (cw * 2) / 3, cy, cx + (cw * 2) / 3, cy + ch]} stroke="rgba(255,255,255,0.5)" strokeWidth={1} dash={[4, 4]} listening={false} />
-                  <Line points={[cx, cy + ch / 3, cx + cw, cy + ch / 3]} stroke="rgba(255,255,255,0.5)" strokeWidth={1} dash={[4, 4]} listening={false} />
-                  <Line points={[cx, cy + (ch * 2) / 3, cx + cw, cy + (ch * 2) / 3]} stroke="rgba(255,255,255,0.5)" strokeWidth={1} dash={[4, 4]} listening={false} />
-
-                  {/* Tiradores de esquinas y bordes */}
-                  {cropHandles.map((h) => (
-                    <Rect
-                      key={h.id}
-                      x={h.x - halfH}
-                      y={h.y - halfH}
-                      width={handleSize}
-                      height={handleSize}
-                      fill="#ffffff"
-                      stroke="#4f46e5"
-                      strokeWidth={2}
-                      cornerRadius={2}
-                      draggable={!panMode && !!onCropChange}
-                      dragBoundFunc={(pos) => ({
-                        x: clamp(pos.x, -halfH, dw - halfH),
-                        y: clamp(pos.y, -halfH, dh - halfH),
-                      })}
-                      onDragMove={(e) => {
-                        handleCropHandleDrag(h.id, e.target.x() + halfH, e.target.y() + halfH);
-                      }}
-                      onDragEnd={(e) => {
-                        handleCropHandleDrag(h.id, e.target.x() + halfH, e.target.y() + halfH);
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-            </Layer>
-          </Stage>
+                ))}
+                {mode === 'guides' && guides.ys.map((y, i) => (
+                  <Line
+                    key={`hy${y}-${i}`}
+                    x={0}
+                    y={toDisplay(y)}
+                    points={[0, 0, dw, 0]}
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    draggable={!panMode}
+                    tabIndex={0}
+                    aria-label={`Guía horizontal en ${y} px. Usa flechas para mover, Supr para eliminar.`}
+                    dragBoundFunc={(pos) => ({ x: 0, y: clamp(pos.y, toDisplay(1), toDisplay(source.height - 1)) })}
+                    onDragEnd={(e) => dragHorizontal(i, e)}
+                    onDblClick={(e) => deleteHorizontal(i, e)}
+                    onKeyDown={(e: KeyboardEvent) => {
+                      const step = e.shiftKey ? 10 : 1;
+                      if (e.key === 'ArrowUp') { e.preventDefault(); moveHorizontal(i, -step); }
+                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveHorizontal(i, step); }
+                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteHorizontal(i, e as unknown as KonvaEventObject<MouseEvent>); }
+                    }}
+                    hitStrokeWidth={16}
+                  />
+                ))}
+              </Layer>
+            </Stage>
+          )}
         </div>
       </div>
 
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200/80 bg-slate-50/70 px-3.5 py-1.5 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400">
         <span>
-          {cropMode
-            ? 'Arrastra las esquinas o el recuadro para recortar · Ajusta el tamaño en px, % o cm sin perder calidad'
+          {resizeMode
+            ? `Modo Resize: exportará la imagen completa a ${targetDimensions?.width ?? source.width} × ${targetDimensions?.height ?? source.height} px sin dividir en partes`
             : mode === 'grid'
               ? 'Rojo = líneas de corte · Índigo = regiones'
               : 'Arrastra las líneas rojas (snap a 1/4, 1/3, 0.5, 2/3, 3/4) · Doble clic añade/elimina'}
