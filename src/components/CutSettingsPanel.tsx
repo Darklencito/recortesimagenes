@@ -17,16 +17,16 @@ interface Props {
   onDivide: () => void;
   spacing: CutSpacing;
   onSpacingChange: (sp: CutSpacing) => void;
+  hideAction?: boolean;
 }
 
-const card = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900';
-const label = 'text-sm font-medium text-slate-700 dark:text-slate-300';
-const hint = 'text-xs text-slate-500 dark:text-slate-400';
-const input = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-500/30';
-const chipBase = 'cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition select-none';
-const btn = 'inline-flex items-center justify-center rounded-xl px-3.5 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+const label = 'text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
+const hint = 'text-[11px] text-slate-500 dark:text-slate-400';
+const input = 'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-xs outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-500/30';
+const chipBase = 'cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-medium transition select-none';
+const btn = 'inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 const btnSoft = `${btn} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700`;
-const btnPrimary = `${btn} bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 focus:ring-indigo-400`;
+const btnPrimary = `${btn} bg-indigo-600 text-white shadow-xs hover:bg-indigo-500 focus:ring-indigo-400`;
 const btnDanger = `${btn} border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:ring-red-300 dark:border-red-900 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20`;
 
 function clampInt(n: number, min: number, max: number) {
@@ -39,7 +39,7 @@ function orientationOf(grid: GridConfig): Orientation | null {
   return null;
 }
 
-export function CutSettingsPanel({ source, mode, grid, guides, dividing, onModeChange, onGridChange, onGuidesChange, onDivide, spacing, onSpacingChange }: Props) {
+export function CutSettingsPanel({ source, mode, grid, guides, dividing, onModeChange, onGridChange, onGuidesChange, onDivide, spacing, onSpacingChange, hideAction = false }: Props) {
   const [parts, setParts] = useState(3);
   const [orientation, setOrientation] = useState<Orientation>('vertical');
   const [xVal, setXVal] = useState('');
@@ -91,20 +91,15 @@ export function CutSettingsPanel({ source, mode, grid, guides, dividing, onModeC
   }
 
   return (
-    <section className={card}>
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">2</span>
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Plantilla y guías</h2>
-      </div>
-
+    <div className="space-y-3.5">
       <div>
         <span className={label}>Modo de corte</span>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           {([
             { id: 'grid', t: 'Grilla uniforme' },
             { id: 'guides', t: 'Guías arrastrables' },
           ] as const).map((m) => (
-            <label key={m.id} className={`${chipBase} rounded-xl text-center ${mode === m.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500'}`}>
+            <label key={m.id} className={`${chipBase} py-1.5 text-center ${mode === m.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500'}`}>
               <input type="radio" name="cutmode" className="sr-only" checked={mode === m.id} onChange={() => switchMode(m.id)} />
               {m.t}
             </label>
@@ -112,93 +107,91 @@ export function CutSettingsPanel({ source, mode, grid, guides, dividing, onModeC
         </div>
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-        <span className={label}>Dividir en partes iguales</span>
-        <div className="mt-2">
-          <span className={hint}>Orientación del corte</span>
-          <div className="mt-1.5 grid grid-cols-2 gap-2">
-            <label className={`${chipBase} rounded-xl text-center ${orientation === 'vertical' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500'}`}>
-              <input type="radio" name="orient" className="sr-only" checked={orientation === 'vertical'} onChange={() => applyParts(parts, 'vertical')} />
-              Vertical
-              <span className={`block text-[11px] font-normal ${orientation === 'vertical' ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>líneas verticales · columnas</span>
-            </label>
-            <label className={`${chipBase} rounded-xl text-center ${orientation === 'horizontal' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500'}`}>
-              <input type="radio" name="orient" className="sr-only" checked={orientation === 'horizontal'} onChange={() => applyParts(parts, 'horizontal')} />
-              Horizontal
-              <span className={`block text-[11px] font-normal ${orientation === 'horizontal' ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>líneas horizontales · filas</span>
-            </label>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+        <div className="flex items-center justify-between">
+          <span className={label}>Partes iguales</span>
+          <div className="flex gap-1">
+            {(['vertical', 'horizontal'] as const).map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => applyParts(parts, o)}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition ${orientation === o ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300'}`}
+              >
+                {o === 'vertical' ? 'Vertical (cols)' : 'Horizontal (filas)'}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="mt-3">
-          <span className={hint}>Cantidad de partes</span>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {[2, 3, 4, 5, 6].map((n) => {
-              const active = parts === n && ((orientation === 'vertical' && grid.rows === 1 && grid.cols === n) || (orientation === 'horizontal' && grid.cols === 1 && grid.rows === n));
-              return (
-                <button key={n} type="button" className={`${chipBase} ${active ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500'}`} onClick={() => applyParts(n, orientation)}>
-                  {n}
-                </button>
-              );
-            })}
-            <input type="number" min={2} max={50} value={parts} onChange={(e) => applyParts(Number(e.target.value) || 2, orientation)} className={`${input} !w-20`} aria-label="Partes personalizadas" />
-          </div>
+        <div className="mt-2 flex items-center gap-1.5">
+          {[2, 3, 4, 5, 6].map((n) => {
+            const active = parts === n && ((orientation === 'vertical' && grid.rows === 1 && grid.cols === n) || (orientation === 'horizontal' && grid.cols === 1 && grid.rows === n));
+            return (
+              <button key={n} type="button" className={`${chipBase} flex-1 text-center ${active ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`} onClick={() => applyParts(n, orientation)}>
+                {n}
+              </button>
+            );
+          })}
+          <input type="number" min={2} max={50} value={parts} onChange={(e) => applyParts(Number(e.target.value) || 2, orientation)} className={`${input} !w-14 text-center`} aria-label="Partes personalizadas" />
         </div>
       </div>
 
-      <div className="mt-4">
-        <span className={label}>Grilla personalizada (filas × columnas)</span>
-        <div className="mt-2 grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className={hint}>Filas</span>
-            <input type="number" min={1} max={50} value={grid.rows} onChange={(e) => applyGrid({ ...grid, rows: Number(e.target.value) || 1 })} className={`${input} mt-1`} />
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+        <div className="flex items-center justify-between">
+          <span className={label}>Grilla (Filas × Columnas)</span>
+          <span className={hint}>
+            <strong className="text-slate-700 dark:text-slate-200">{grid.rows * grid.cols}</strong> cortes{currentOrient ? ` · ${currentOrient}` : ''}
+          </span>
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-2">
+          <label className="flex items-center gap-2">
+            <span className={`${hint} w-12 shrink-0`}>Filas</span>
+            <input type="number" min={1} max={50} value={grid.rows} onChange={(e) => applyGrid({ ...grid, rows: Number(e.target.value) || 1 })} className={input} />
           </label>
-          <label className="block">
-            <span className={hint}>Columnas</span>
-            <input type="number" min={1} max={50} value={grid.cols} onChange={(e) => applyGrid({ ...grid, cols: Number(e.target.value) || 1 })} className={`${input} mt-1`} />
+          <label className="flex items-center gap-2">
+            <span className={`${hint} w-12 shrink-0`}>Cols</span>
+            <input type="number" min={1} max={50} value={grid.cols} onChange={(e) => applyGrid({ ...grid, cols: Number(e.target.value) || 1 })} className={input} />
           </label>
         </div>
-        <p className={`${hint} mt-2`}>
-          Resultado: <strong className="text-slate-700 dark:text-slate-200">{grid.rows * grid.cols}</strong> cortes ({grid.rows}×{grid.cols}){currentOrient ? ` · ${currentOrient === 'vertical' ? 'líneas verticales' : 'líneas horizontales'}` : ''}.
-        </p>
       </div>
 
       {mode === 'guides' && (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900 dark:bg-amber-500/10">
-          <span className={label}>Guías precisas (px de la fuente {source.width}×{source.height})</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" className={btnSoft} onClick={addVertical}>+ Línea vertical</button>
-            <button type="button" className={btnSoft} onClick={addHorizontal}>+ Línea horizontal</button>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 dark:border-amber-900/70 dark:bg-amber-500/10">
+          <span className={label}>Guías precisas ({source.width}×{source.height} px)</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button type="button" className={btnSoft} onClick={addVertical}>+ Vertical</button>
+            <button type="button" className={btnSoft} onClick={addHorizontal}>+ Horizontal</button>
             <button type="button" className={btnDanger} onClick={() => onGuidesChange({ xs: [], ys: [] })}>Limpiar</button>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="flex items-center gap-1.5">
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <div className="flex items-center gap-1">
               <input type="number" min={1} max={source.width - 1} value={xVal} placeholder="X px" onChange={(e) => setXVal(e.target.value)} className={input} />
               <button type="button" className={btnSoft} onClick={() => { addVerticalAt(Number(xVal)); setXVal(''); }}>+X</button>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <input type="number" min={1} max={source.height - 1} value={yVal} placeholder="Y px" onChange={(e) => setYVal(e.target.value)} className={input} />
               <button type="button" className={btnSoft} onClick={() => { addHorizontalAt(Number(yVal)); setYVal(''); }}>+Y</button>
             </div>
           </div>
 
           {(guides.xs.length > 0 || guides.ys.length > 0) && (
-            <div className="mt-3 space-y-1.5">
+            <div className="mt-2 max-h-24 space-y-1 overflow-y-auto">
               {guides.xs.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
                   <span className={hint}>X:</span>
                   {guides.xs.map((x, i) => (
-                    <button key={`x${x}-${i}`} type="button" onClick={() => removeX(i)} title="Quitar guía" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:border-red-300 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                    <button key={`x${x}-${i}`} type="button" onClick={() => removeX(i)} title="Quitar guía" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-700 hover:border-red-300 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
                       {x} ×
                     </button>
                   ))}
                 </div>
               )}
               {guides.ys.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
                   <span className={hint}>Y:</span>
                   {guides.ys.map((y, i) => (
-                    <button key={`y${y}-${i}`} type="button" onClick={() => removeY(i)} title="Quitar guía" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:border-red-300 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                    <button key={`y${y}-${i}`} type="button" onClick={() => removeY(i)} title="Quitar guía" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-700 hover:border-red-300 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
                       {y} ×
                     </button>
                   ))}
@@ -206,33 +199,32 @@ export function CutSettingsPanel({ source, mode, grid, guides, dividing, onModeC
               )}
             </div>
           )}
-
-          <p className={`${hint} mt-2`}>Doble clic en la imagen añade una guía · doble clic en una línea la elimina · Ctrl+Z / Ctrl+Y para deshacer/rehacer.</p>
         </div>
       )}
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-        <span className={label}>Márgenes y sangrado (px de la fuente)</span>
-        <div className="mt-2 grid grid-cols-3 gap-2">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+        <span className={label}>Márgenes y sangrado (px)</span>
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
           <label className="block">
             <span className={hint}>Margen</span>
-            <input type="number" min={0} max={2000} value={spacing.margin} onChange={(e) => onSpacingChange({ ...spacing, margin: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-1`} />
+            <input type="number" min={0} max={2000} value={spacing.margin} onChange={(e) => onSpacingChange({ ...spacing, margin: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-0.5`} />
           </label>
           <label className="block">
             <span className={hint}>Separación</span>
-            <input type="number" min={0} max={2000} value={spacing.gutter} onChange={(e) => onSpacingChange({ ...spacing, gutter: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-1`} />
+            <input type="number" min={0} max={2000} value={spacing.gutter} onChange={(e) => onSpacingChange({ ...spacing, gutter: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-0.5`} />
           </label>
           <label className="block">
             <span className={hint}>Sangrado</span>
-            <input type="number" min={0} max={2000} value={spacing.bleed} onChange={(e) => onSpacingChange({ ...spacing, bleed: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-1`} />
+            <input type="number" min={0} max={2000} value={spacing.bleed} onChange={(e) => onSpacingChange({ ...spacing, bleed: Math.max(0, Number(e.target.value) || 0) })} className={`${input} mt-0.5`} />
           </label>
         </div>
-        <p className={`${hint} mt-2`}>Margen = borde exterior · Separación = hueco entre piezas · Sangrado = expansión para imprenta (solapa). Déjalos en 0 para cortes exactos.</p>
       </div>
 
-      <button type="button" onClick={onDivide} disabled={dividing} className={`${btnPrimary} mt-5 w-full py-3 text-[15px]`}>
-        {dividing ? 'Dividiendo…' : 'Dividir imagen'}
-      </button>
-    </section>
+      {!hideAction && (
+        <button type="button" onClick={onDivide} disabled={dividing} className={`${btnPrimary} w-full py-2.5 text-sm`}>
+          {dividing ? 'Dividiendo…' : 'Dividir imagen'}
+        </button>
+      )}
+    </div>
   );
 }

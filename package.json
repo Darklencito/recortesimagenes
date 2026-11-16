@@ -13,6 +13,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "api": "node server/index.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
@@ -20,9 +21,8 @@
     "preview": "vite preview",
     "release": "npm version patch && git push --follow-tags",
     "electron:dev": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder --publish never",
-    "electron:build:win": "npm run build && electron-builder --win --publish never",
-    "electron:build:mac": "npm run build && electron-builder --mac --publish never"
+    "electron:build": "npm run build && electron-builder --win --publish never",
+    "electron:build:win": "npm run build && electron-builder --win --publish never"
   },
   "build": {
     "appId": "pe.nodos.cortesmail",
@@ -42,13 +42,6 @@
       ],
       "icon": "build/icon-1024.png"
     },
-    "mac": {
-      "target": [
-        "dmg"
-      ],
-      "icon": "build/icon-1024.png",
-      "category": "public.app-category.graphics-design"
-    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
@@ -56,28 +49,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Herramientas de Diseño Nodos"
-    },
-    "dmg": {
-      "background": "build/dmg-background.png",
-      "icon": "public/icon-512.png",
-      "iconSize": 100,
-      "contents": [
-        {
-          "x": 180,
-          "y": 200,
-          "type": "file"
-        },
-        {
-          "x": 430,
-          "y": 200,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ],
-      "window": {
-        "width": 640,
-        "height": 400
-      }
     }
   },
   "dependencies": {

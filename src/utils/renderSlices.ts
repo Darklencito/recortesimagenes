@@ -1,5 +1,6 @@
 import type { OutputFormat, ResizeConfig, SliceRect, SliceResult } from '../types';
 import SliceWorker from '../workers/slice.worker?worker';
+import { drawHighQualityResized } from './imageTransform';
 
 function extFor(format: OutputFormat): string {
   if (format === 'image/jpeg') return 'jpg';
@@ -48,14 +49,7 @@ async function renderSlicesMainThread(
     const c = document.createElement('canvas');
     c.width = w;
     c.height = h;
-    const ctx = c.getContext('2d');
-    if (!ctx) throw new Error('No se pudo crear el contexto de canvas.');
-    ctx.imageSmoothingQuality = 'high';
-    if (background) {
-      ctx.fillStyle = background;
-      ctx.fillRect(0, 0, w, h);
-    }
-    ctx.drawImage(sourceCanvas, rect.x, rect.y, rect.width, rect.height, 0, 0, w, h);
+    drawHighQualityResized(sourceCanvas, rect.x, rect.y, rect.width, rect.height, c, w, h, background);
     const blob = await canvasToBlob(c, format, quality);
     const filename = `${String(i + 1).padStart(pad, '0')}.${ext}`;
     results.push({ ...rect, width: w, height: h, blob, url: URL.createObjectURL(blob), filename });

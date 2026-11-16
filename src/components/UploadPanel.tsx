@@ -6,9 +6,7 @@ import type { SourceImage } from '../types';
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp';
 const VALID_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
 
-const card = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900';
 const hint = 'text-xs text-slate-500 dark:text-slate-400';
-const btnPrimary = 'inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
 interface Props {
   onLoaded: (source: SourceImage) => void;
@@ -16,9 +14,10 @@ interface Props {
   /** DPI used for the initial PDF rasterization (adjustable later in ResolutionPanel). */
   pdfDpi: number;
   onBatchLoaded?: (files: File[]) => void;
+  currentName?: string;
 }
 
-export function UploadPanel({ onLoaded, variant = 'sidebar', pdfDpi, onBatchLoaded }: Props) {
+export function UploadPanel({ onLoaded, variant = 'sidebar', pdfDpi, onBatchLoaded, currentName }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +31,8 @@ export function UploadPanel({ onLoaded, variant = 'sidebar', pdfDpi, onBatchLoad
     if (files.length > 0 && onBatchLoaded) onBatchLoaded(files);
   }
 
-  const isPdf = file?.type === 'application/pdf' || file?.name.toLowerCase().endsWith('.pdf');
   const isHero = variant === 'hero';
+  const activeName = currentName ?? file?.name;
 
   function isValidFile(f: File) {
     const ext = f.name.toLowerCase().split('.').pop() ?? '';
@@ -119,28 +118,28 @@ export function UploadPanel({ onLoaded, variant = 'sidebar', pdfDpi, onBatchLoad
       onDrop={onDrop}
       className={`group cursor-pointer rounded-2xl border-2 border-dashed transition ${
         dragActive ? 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-100 dark:bg-indigo-500/10 dark:ring-indigo-500/20' : 'border-slate-300 bg-slate-50/60 hover:border-indigo-400 hover:bg-indigo-50/50 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-indigo-500 dark:hover:bg-indigo-500/10'
-      } ${isHero ? 'flex min-h-[280px] flex-col items-center justify-center px-6 py-12 text-center' : 'p-4 text-center'}`}
+      } ${isHero ? 'flex min-h-[220px] flex-col items-center justify-center px-6 py-8 text-center' : 'p-3 text-center'}`}
     >
-      <div className={`mx-auto flex items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600 transition group-hover:scale-105 dark:bg-indigo-500/20 dark:text-indigo-300 ${isHero ? 'mb-4 h-16 w-16' : 'mb-2 h-11 w-11'}`}>
+      <div className={`mx-auto flex items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600 transition group-hover:scale-105 dark:bg-indigo-500/20 dark:text-indigo-300 ${isHero ? 'mb-3 h-14 w-14' : 'mb-1.5 h-9 w-9'}`}>
         {loading ? (
-          <span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
         ) : (
-          <svg width={isHero ? 30 : 22} height={isHero ? 30 : 22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width={isHero ? 26 : 18} height={isHero ? 26 : 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         )}
       </div>
-      <p className={`font-semibold text-slate-800 dark:text-slate-200 ${isHero ? 'text-lg' : 'text-sm'}`}>
+      <p className={`font-semibold text-slate-800 dark:text-slate-200 ${isHero ? 'text-base sm:text-lg' : 'text-xs'}`}>
         {loading ? 'Procesando…' : 'Arrastra y suelta tu archivo'}
       </p>
-      <p className={`${hint} ${isHero ? 'mt-1.5 text-sm' : 'mt-1'}`}>
+      <p className={`${hint} ${isHero ? 'mt-1 text-xs sm:text-sm' : 'mt-0.5'}`}>
         o haz clic para seleccionar · PDF (Illustrator), PNG, JPG, WEBP
       </p>
       {isHero && (
-        <p className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm">
-          Suelta aquí para ver la vista previa
+        <p className="mt-3 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm dark:bg-indigo-600">
+          Suelta aquí o pega con Ctrl+V
         </p>
       )}
       <input ref={inputRef} type="file" accept={ACCEPT} onChange={handleFile} className="sr-only" tabIndex={-1} />
@@ -152,45 +151,64 @@ export function UploadPanel({ onLoaded, variant = 'sidebar', pdfDpi, onBatchLoad
       <div className="w-full">
         {dropZone}
         {onBatchLoaded && (
-          <button type="button" onClick={() => batchInputRef.current?.click()} className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-            Procesar por lotes (varios archivos)
+          <button type="button" onClick={() => batchInputRef.current?.click()} className="mt-2.5 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+            Procesar por lotes (varios archivos a ZIP)
           </button>
         )}
         <input ref={batchInputRef} type="file" accept={ACCEPT} multiple onChange={handleBatchFiles} className="sr-only" tabIndex={-1} />
-        {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
+        {error && <p className="mt-2.5 rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
       </div>
     );
   }
 
   return (
-    <section className={card}>
-      <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">1</span>
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Cargar archivo</h2>
-      </div>
-      {dropZone}
-
-      {file && (
-        <div className="mt-3 flex items-start justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200" title={file.name}>{file.name}</p>
-            <p className={hint}>{(file.size / 1024 / 1024).toFixed(2)} MB{isPdf ? ' · PDF' : ''}</p>
-          </div>
+    <div
+      onDragOver={onDragOver}
+      onDragEnter={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`rounded-xl border transition ${
+        dragActive
+          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-500/10'
+          : 'border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-800/50'
+      } p-2.5`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200" title={activeName || 'Archivo activo'}>
+            {loading ? 'Cargando archivo…' : activeName || 'Archivo listo'}
+          </p>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+            Arrastra otro o usa Ctrl+V para reemplazar
+          </p>
         </div>
-      )}
-      {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
-
-      <button type="button" onClick={() => inputRef.current?.click()} disabled={loading} className={`${btnPrimary} mt-4 w-full`}>
-        {loading ? 'Procesando…' : file ? 'Cargar otro archivo' : 'Cargar archivo'}
-      </button>
-      {onBatchLoaded && (
-        <>
-          <button type="button" onClick={() => batchInputRef.current?.click()} disabled={loading} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-            Procesar por lotes (varios archivos)
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={loading}
+            className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {loading ? '…' : 'Cambiar'}
           </button>
-          <input ref={batchInputRef} type="file" accept={ACCEPT} multiple onChange={handleBatchFiles} className="sr-only" tabIndex={-1} />
-        </>
+          {onBatchLoaded && (
+            <button
+              type="button"
+              onClick={() => batchInputRef.current?.click()}
+              disabled={loading}
+              title="Procesar varios archivos con la configuración actual"
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Lotes
+            </button>
+          )}
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept={ACCEPT} onChange={handleFile} className="sr-only" tabIndex={-1} />
+      {onBatchLoaded && (
+        <input ref={batchInputRef} type="file" accept={ACCEPT} multiple onChange={handleBatchFiles} className="sr-only" tabIndex={-1} />
       )}
-    </section>
+      {error && <p className="mt-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
+    </div>
   );
 }

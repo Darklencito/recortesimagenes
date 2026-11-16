@@ -5,7 +5,6 @@ Aplicación web y de escritorio para cortar imágenes (PNG, JPG, WEBP) y PDF (in
 ## Descarga
 
 - **Windows**: [Descargar instalador (.exe)](https://github.com/Darklencito/recortesimagenes/releases/latest)
-- **macOS**: [Descargar (.dmg)](https://github.com/Darklencito/recortesimagenes/releases/latest)
 
 ### Instalación en Windows
 1. Descarga `nodos-cortes-X.Y.Z-win-x64.exe`.
@@ -13,14 +12,6 @@ Aplicación web y de escritorio para cortar imágenes (PNG, JPG, WEBP) y PDF (in
 3. La app se abre automáticamente al terminar.
 
 > Windows SmartScreen puede mostrar "Windows protegió tu PC". Haz clic en **Más información → Ejecutar de todas formas** (la app no está firmada con certificado).
-
-### Instalación en macOS
-1. Descarga `nodos-cortes-X.Y.Z-mac-arm64.dmg` (o `x64` según tu Mac).
-2. Abre el `.dmg` y **arrastra la app** a la carpeta **Aplicaciones**.
-3. La primera vez, macOS bloqueará la app (Gatekeeper). Para abrirla:
-   - **Clic derecho → Abrir** y confirma, o
-   - **Ajustes del Sistema → Privacidad y seguridad → "Abrir de todas formas"**, o
-   - En Terminal: `xattr -cr "/Applications/Herramientas de Diseño Nodos.app"`
 
 ### Actualizaciones automáticas
 La app de escritorio **se actualiza sola**: detecta nuevas versiones en GitHub, las descarga en segundo plano y te avisa para reiniciar. No necesitas reinstalar manualmente.
@@ -78,7 +69,6 @@ npm run lint
 
 ```bash
 npm run electron:build:win   # Windows (.exe)
-npm run electron:build:mac   # macOS (.dmg, requiere Mac)
 npm run release              # bump versión + push (dispara CI)
 ```
 

@@ -10,9 +10,15 @@ createRoot(document.getElementById('root')!).render(
 )
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      /* registro fallido: la app sigue funcionando sin offline */
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        /* registro fallido: la app sigue funcionando sin offline */
+      });
     });
-  });
+  } else {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      for (const r of regs) r.unregister();
+    }).catch(() => undefined);
+  }
 }

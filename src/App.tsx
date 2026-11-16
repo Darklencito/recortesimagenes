@@ -9,13 +9,18 @@ import { UploadPanel } from './components/UploadPanel';
 import { ResolutionPanel } from './components/ResolutionPanel';
 import { CutSettingsPanel } from './components/CutSettingsPanel';
 import { ExportPanel } from './components/ExportPanel';
+import { CropResizePanel } from './components/CropResizePanel';
 import { PresetsPanel } from './components/PresetsPanel';
 import type { Preset } from './components/PresetsPanel';
 const ImageWorkspace = lazy(() => import('./components/ImageWorkspace').then((m) => ({ default: m.ImageWorkspace })));
 import { PreviewPanel } from './components/PreviewPanel';
+import { CreditsModal, type CreditsTab } from './components/CreditsModal';
+import { AdminDashboard } from './components/AdminDashboard';
+import { consumeCredits, fetchAccountStatus, type CreditRequestItem, type CreditTransaction, type ProcessLog, type UserAccount } from './utils/creditsApi';
 import { applySpacing, computeSlicesFromGrid, computeSlicesFromGuides, guidesFromGrid, ZERO_SPACING } from './utils/slicing';
 import type { CutSpacing } from './utils/slicing';
 import { renderSlices, revokeSliceResults } from './utils/renderSlices';
+import { canvasToOutputBlob, cropAndResizeCanvas, type CropRect } from './utils/imageTransform';
 // pdfjs e loadImage se cargan bajo demanda (ver rasterizePdf / handlePaste).
 
 const DEFAULT_GRID: GridConfig = { rows: 1, cols: 2 };
@@ -53,6 +58,12 @@ export default function App() {
     }
   });
   const [source, setSource] = useState<SourceImage | null>(null);
+  const [originalSource, setOriginalSource] = useState<SourceImage | null>(null);
+  const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, width: 100, height: 100 });
+  const [cropAspect, setCropAspect] = useState<number | null>(null);
+  const [targetDimensions, setTargetDimensions] = useState<{ width: number; height: number }>({ width: 100, height: 100 });
+  const [lockAspect, setLockAspect] = useState(true);
+  const [sharpen, setSharpen] = useState(true);
   const [mode, setMode] = useState<CutMode>('grid');
   const [grid, setGrid] = useState<GridConfig>(DEFAULT_GRID);
   const [guides, setGuides] = useState<Guides>({ xs: [], ys: [] });
@@ -120,10 +131,61 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [activeTab, setActiveTab] = useState<'cut' | 'crop' | 'export' | 'presets'>('cut');
+  const [previewOpen, setPreviewOpen] = useState(true);
+  const [account, setAccount] = useState<UserAccount | null>(null);
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [processLogs, setProcessLogs] = useState<ProcessLog[]>([]);
+  const [creditRequests, setCreditRequests] = useState<CreditRequestItem[]>([]);
+  const [creditsModalOpen, setCreditsModalOpen] = useState(false);
+  const [creditsModalTab, setCreditsModalTab] = useState<CreditsTab>('account');
+  const [isAdminRoute, setIsAdminRoute] = useState(() => {
+    try {
+      return window.location.hash === '#admin' || window.location.pathname.endsWith('/admin');
+    } catch {
+      return false;
+    }
+  });
+  const prevReqStatus = useRef<Record<number, string>>({});
   const toastId = useRef(0);
   const notifId = useRef(0);
   const updateToastId = useRef<number | null>(null);
   const checkToastId = useRef<number | null>(null);
+
+  async function refreshAccount() {
+    const r = await fetchAccountStatus();
+    if (r.user) setAccount(r.user);
+    if (r.transactions) setTransactions(r.transactions);
+    if (r.logs) setProcessLogs(r.logs);
+    if (r.requests) {
+      for (const req of r.requests) {
+        const old = prevReqStatus.current[req.id];
+        if (old === 'pending' && req.status === 'approved') {
+          addToast('success', `¡Tu recarga de +${req.credits_requested} créditos fue aprobada!`, { duration: 6000, record: true });
+        } else if (old === 'pending' && req.status === 'rejected') {
+          addToast('error', `Tu solicitud #${req.id} fue rechazada. Revisa el código de operación.`, { duration: 6000, record: true });
+        }
+        prevReqStatus.current[req.id] = req.status;
+      }
+      setCreditRequests(r.requests);
+    }
+  }
+
+  useEffect(() => {
+    void refreshAccount();
+    function onHashChange() {
+      setIsAdminRoute(window.location.hash === '#admin' || window.location.pathname.endsWith('/admin'));
+    }
+    window.addEventListener('hashchange', onHashChange);
+    const interval = setInterval(() => {
+      void refreshAccount();
+    }, 5000);
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function addNotification(type: ToastType, message: string, action?: { label: string; onClick: () => void }) {
     const id = ++notifId.current;
@@ -421,6 +483,10 @@ export default function App() {
     clearSlices([]);
     setError(null);
     setSource(next);
+    setOriginalSource(next);
+    setCrop({ x: 0, y: 0, width: next.width, height: next.height });
+    setCropAspect(null);
+    setTargetDimensions({ width: next.width, height: next.height });
     setMode('grid');
     setGrid(DEFAULT_GRID);
     setGuides(guidesFromGrid(next.width, next.height, DEFAULT_GRID));
@@ -441,11 +507,130 @@ export default function App() {
       } catch {
         /* storage no disponible */
       }
-      setSource({ ...source, canvas, width: canvas.width, height: canvas.height, pdfDpi: nextDpi, pdfPage: page, pdfNumPages: numPages });
+      const nextSource = { ...source, canvas, width: canvas.width, height: canvas.height, pdfDpi: nextDpi, pdfPage: page, pdfNumPages: numPages };
+      setSource(nextSource);
+      setOriginalSource(nextSource);
+      setCrop({ x: 0, y: 0, width: canvas.width, height: canvas.height });
+      setTargetDimensions({ width: canvas.width, height: canvas.height });
       setGuides(guidesFromGrid(canvas.width, canvas.height, grid));
       setHistory({ past: [], future: [] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el PDF. Verifica el DPI o la página e inténtalo de nuevo.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleWorkspaceCropChange(nextCrop: CropRect) {
+    const wasUnresized = targetDimensions.width === crop.width && targetDimensions.height === crop.height;
+    setCrop(nextCrop);
+    if (wasUnresized) {
+      setTargetDimensions({ width: nextCrop.width, height: nextCrop.height });
+    } else if (lockAspect) {
+      const ratio = nextCrop.width / Math.max(1, nextCrop.height);
+      setTargetDimensions({
+        width: targetDimensions.width,
+        height: Math.max(1, Math.round(targetDimensions.width / ratio)),
+      });
+    }
+  }
+
+  function handleApplyCropResizeToCanvas() {
+    if (!source) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const newCanvas = cropAndResizeCanvas(source.canvas, {
+        crop,
+        targetWidth: targetDimensions.width,
+        targetHeight: targetDimensions.height,
+        sharpen,
+      });
+      const nextSource: SourceImage = {
+        ...source,
+        canvas: newCanvas,
+        width: newCanvas.width,
+        height: newCanvas.height,
+      };
+      clearSlices([]);
+      setSource(nextSource);
+      setCrop({ x: 0, y: 0, width: newCanvas.width, height: newCanvas.height });
+      setTargetDimensions({ width: newCanvas.width, height: newCanvas.height });
+      setGuides(guidesFromGrid(newCanvas.width, newCanvas.height, grid));
+      setHistory({ past: [], future: [] });
+      setNotice(`Lienzo actualizado a ${newCanvas.width}×${newCanvas.height} px sin pérdida de nitidez.`);
+      addToast('success', `Imagen ajustada a ${newCanvas.width}×${newCanvas.height} px.`, { duration: 3500 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo recortar o redimensionar la imagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleRestoreOriginalSource() {
+    if (!originalSource) return;
+    clearSlices([]);
+    setSource(originalSource);
+    setCrop({ x: 0, y: 0, width: originalSource.width, height: originalSource.height });
+    setCropAspect(null);
+    setTargetDimensions({ width: originalSource.width, height: originalSource.height });
+    setGuides(guidesFromGrid(originalSource.width, originalSource.height, grid));
+    setHistory({ past: [], future: [] });
+    setNotice(`Imagen original restaurada (${originalSource.width}×${originalSource.height} px).`);
+    addToast('info', 'Imagen original restaurada.', { duration: 3000 });
+  }
+
+  async function handleDownloadSingleImage() {
+    if (!source) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const outCanvas = cropAndResizeCanvas(source.canvas, {
+        crop,
+        targetWidth: targetDimensions.width,
+        targetHeight: targetDimensions.height,
+        background: format === 'image/jpeg' ? bgColor : null,
+        sharpen,
+      });
+      const blob = await canvasToOutputBlob(outCanvas, format, quality);
+      const ext = format === 'image/jpeg' ? 'jpg' : format === 'image/webp' ? 'webp' : 'png';
+      const base = (source.name.replace(/\.[^.]+$/, '') || 'imagen').replace(/[\\/:*?"<>|]/g, '_');
+      const filename = `${base}-${outCanvas.width}x${outCanvas.height}.${ext}`;
+      const api = window.electronAPI;
+      if (api?.saveToDownloads) {
+        const buf = await blob.arrayBuffer();
+        const r = await api.saveToDownloads(filename, buf);
+        setNotice(`Imagen guardada en Descargas: ${r.filename}`);
+        addToast('success', `Guardado en Descargas: ${r.filename}`, { duration: 3500 });
+      } else {
+        saveAs(blob, filename);
+        setNotice(`Imagen descargada: ${filename}`);
+        addToast('success', `Imagen descargada: ${filename}`, { duration: 3500 });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo exportar la imagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopySingleImage() {
+    if (!source) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const outCanvas = cropAndResizeCanvas(source.canvas, {
+        crop,
+        targetWidth: targetDimensions.width,
+        targetHeight: targetDimensions.height,
+        sharpen,
+      });
+      const pngBlob = await canvasToOutputBlob(outCanvas, 'image/png', 1);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+      setNotice(`Imagen (${outCanvas.width}×${outCanvas.height} px) copiada al portapapeles.`);
+      addToast('success', `¡Copiada al portapapeles (${outCanvas.width}×${outCanvas.height} px)!`, { duration: 3000 });
+    } catch {
+      setError('No se pudo copiar al portapapeles. Usa el botón Descargar imagen.');
     } finally {
       setBusy(false);
     }
@@ -482,6 +667,7 @@ export default function App() {
     try {
       const results = await generateSlices(source);
       clearSlices(results);
+      setPreviewOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo dividir la imagen. Intenta de nuevo.');
     } finally {
@@ -506,6 +692,25 @@ export default function App() {
     setError(null);
     setNotice(null);
     try {
+      const creditCheck = await consumeCredits({
+        amount: files.length,
+        actionType: 'batch',
+        filesCount: files.length,
+        slicesCount: files.length * (mode === 'grid' ? grid.rows * grid.cols : (guides.xs.length + 1) * (guides.ys.length + 1)),
+        note: `Lote de ${files.length} archivos`,
+      });
+      if (!creditCheck.ok) {
+        setError(creditCheck.error || 'No tienes suficientes créditos para este lote.');
+        addToast('error', creditCheck.error || 'Créditos insuficientes. Recarga por Yape/Plin.', {
+          action: { label: 'Recargar', onClick: () => { setCreditsModalTab('topup'); setCreditsModalOpen(true); } },
+          duration: 6000,
+        });
+        setCreditsModalTab('topup');
+        setCreditsModalOpen(true);
+        return;
+      }
+      void refreshAccount();
+
       const zip = new JSZip();
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -620,17 +825,36 @@ export default function App() {
     setError(null);
     setNotice(null);
     try {
+      const creditCheck = await consumeCredits({
+        amount: 1,
+        actionType: 'zip',
+        filesCount: 1,
+        slicesCount: currentRects(source).length,
+        note: `Exportación ZIP: ${source.name}`,
+      });
+      if (!creditCheck.ok) {
+        setError(creditCheck.error || 'No tienes suficientes créditos.');
+        addToast('error', creditCheck.error || 'Sin créditos disponibles. Recarga con Yape o Plin.', {
+          action: { label: 'Recargar', onClick: () => { setCreditsModalTab('topup'); setCreditsModalOpen(true); } },
+          duration: 6000,
+        });
+        setCreditsModalTab('topup');
+        setCreditsModalOpen(true);
+        return;
+      }
+
       const { blob, name } = await buildZip();
+      void refreshAccount();
       const api = window.electronAPI;
       if (api?.saveToDownloads) {
         const buf = await blob.arrayBuffer();
         const r = await api.saveToDownloads(name, buf);
         setNotice(`ZIP guardado en Descargas: ${r.filename}`);
-        addToast('success', `Guardado en Descargas: ${r.filename}`, { duration: 4000 });
+        addToast('success', `Guardado en Descargas: ${r.filename} (-1 crédito)`, { duration: 4000 });
       } else {
         saveAs(blob, name);
         setNotice(`ZIP descargado: ${name}`);
-        addToast('success', `Descargado ${name} con éxito.`, { duration: 3500 });
+        addToast('success', `Descargado ${name} (-1 crédito).`, { duration: 3500 });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo generar el ZIP. Intenta de nuevo.');
@@ -639,150 +863,334 @@ export default function App() {
     }
   }
 
+  if (isAdminRoute) {
+    return (
+      <AdminDashboard
+        onExitAdmin={() => {
+          window.history.pushState('', document.title, window.location.pathname);
+          setIsAdminRoute(false);
+          void refreshAccount();
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
-      <header className="border-b border-slate-200/70 bg-slate-950 text-white dark:border-slate-800">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6">
-          <img src="./logo-nodos-white.png" alt="nodos.pe" className="h-12 w-auto sm:h-14" />
+    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900 transition-colors lg:h-screen lg:overflow-hidden dark:bg-slate-950 dark:text-slate-100">
+      <header className="shrink-0 border-b border-slate-800 bg-slate-950 text-white">
+        <div className="flex h-14 items-center gap-3 px-4">
+          <img src="./logo-nodos-white.png" alt="nodos.pe" className="h-9 w-auto shrink-0" />
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Herramientas de Diseño Nodos</h1>
-            <p className="text-sm text-slate-300">Sube, define cortes precisos y exporta en PNG, JPG o WEBP. Atajos: Ctrl+Enter dividir · Ctrl+D descargar · G/L cambiar modo.</p>
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-sm font-semibold tracking-tight sm:text-base">Herramientas de Diseño Nodos</h1>
+              <span className="hidden rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300 sm:inline-block">
+                v{__APP_VERSION__}
+              </span>
+            </div>
+            <p className="hidden truncate text-[11px] text-slate-400 md:block">
+              Ctrl+Enter dividir · Ctrl+D descargar ZIP · G/L modo · Ctrl+Z/Y deshacer
+            </p>
           </div>
-          <div ref={notifRef} className="relative">
-            <NotificationBell unread={unreadCount} onClick={() => setNotifOpen((o) => !o)} />
-            <NotificationPanel
-              notifications={notifications}
-              unread={unreadCount}
-              open={notifOpen}
-              onMarkAllRead={markAllRead}
-              onClear={clearNotifications}
-              onClose={() => setNotifOpen(false)}
-              onCheckUpdates={window.electronAPI ? () => { setCheckingUpdate(true); window.electronAPI!.checkForUpdates(); } : undefined}
-              checking={checkingUpdate}
-            />
-          </div>
-          <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-            v{__APP_VERSION__}
-          </span>
-          {installPrompt && (
+
+          <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  await installPrompt.prompt();
-                  await installPrompt.userChoice;
-                } catch {
-                  /* ignore */
-                }
-                setInstallPrompt(null);
+              onClick={() => {
+                setCreditsModalTab('account');
+                setCreditsModalOpen(true);
               }}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/15 px-3 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/25 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              title="Ver mis créditos, recargar por Yape/Plin o configurar API Key"
             >
-              Instalar app
+              <span className="text-amber-400">⚡</span>
+              <span>{account?.credits ?? 0} créditos</span>
+              <span className="hidden rounded-md bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white sm:inline">
+                Recargar / API
+              </span>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-            title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-            className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          >
-            {theme === 'dark' ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+
+            <div ref={notifRef} className="relative">
+              <NotificationBell unread={unreadCount} onClick={() => setNotifOpen((o) => !o)} />
+              <NotificationPanel
+                notifications={notifications}
+                unread={unreadCount}
+                open={notifOpen}
+                onMarkAllRead={markAllRead}
+                onClear={clearNotifications}
+                onClose={() => setNotifOpen(false)}
+                onCheckUpdates={window.electronAPI ? () => { setCheckingUpdate(true); window.electronAPI!.checkForUpdates(); } : undefined}
+                checking={checkingUpdate}
+              />
+            </div>
+
+            {installPrompt && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await installPrompt.prompt();
+                    await installPrompt.userChoice;
+                  } catch {
+                    /* ignore */
+                  }
+                  setInstallPrompt(null);
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-medium text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                Instalar app
+              </button>
             )}
-          </button>
+
+            <button
+              type="button"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              {theme === 'dark' ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {!source ? (
-          <section className="mx-auto flex min-h-[65vh] max-w-3xl flex-col items-center justify-center text-center">
-            <div className="mb-6">
+          <section className="mx-auto flex flex-1 max-w-3xl flex-col items-center justify-center px-4 py-6 text-center">
+            <div className="mb-4">
               <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">Rápido y preciso</span>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">Corta imágenes y PDF en segundos</h2>
-              <p className="mt-2 text-slate-500 dark:text-slate-400">Arrastra tu archivo al centro o pega una imagen con Ctrl+V. Verás la vista previa y las opciones de corte a la izquierda.</p>
+              <h2 className="mt-2.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">Corta imágenes y PDF en segundos</h2>
+              <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Arrastra tu archivo al centro o pega una imagen con Ctrl+V. Todo en una sola pantalla tipo estudio.</p>
             </div>
             <UploadPanel onLoaded={handleLoaded} variant="hero" pdfDpi={dpi} onBatchLoaded={handleBatch} />
-            <ul className="mt-6 grid w-full grid-cols-1 gap-3 text-left sm:grid-cols-3">
+            <ul className="mt-4 grid w-full grid-cols-1 gap-2.5 text-left sm:grid-cols-3">
               {[
                 ['Plantillas', '1×2, 1×3, 1×4 y grilla personalizada.'],
                 ['Guías precisas', 'Arrastra líneas y ajusta al píxel.'],
                 ['Exporta', 'PNG, JPG o WEBP con calidad, en ZIP.'],
               ].map(([t, d]) => (
-                <li key={t} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t}</p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{d}</p>
+                <li key={t} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{d}</p>
                 </li>
               ))}
             </ul>
           </section>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:items-start">
-            <div className="flex flex-col gap-6">
-              <UploadPanel onLoaded={handleLoaded} variant="sidebar" pdfDpi={dpi} onBatchLoaded={handleBatch} />
-              {source.pdfDpi != null && (
-                <ResolutionPanel
-                  currentDpi={source.pdfDpi}
-                  width={source.width}
-                  height={source.height}
-                  busy={busy}
-                  onApply={handleApplyDpi}
-                  page={source.pdfPage ?? 1}
-                  numPages={source.pdfNumPages ?? 1}
-                  onPageChange={handlePdfPageChange}
+          <div className="flex flex-1 min-h-0 flex-col gap-3 p-3 lg:flex-row lg:overflow-hidden">
+            {/* Panel Izquierdo: Controles en Pestañas + Footer fijo */}
+            <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-full lg:w-[350px] xl:w-[370px] dark:border-slate-800 dark:bg-slate-900">
+              <div className="shrink-0 space-y-2 border-b border-slate-200/80 p-3 dark:border-slate-800">
+                <UploadPanel
+                  onLoaded={handleLoaded}
+                  variant="sidebar"
+                  pdfDpi={dpi}
+                  onBatchLoaded={handleBatch}
+                  currentName={source.name}
                 />
-              )}
-              <CutSettingsPanel
-                source={source}
-                mode={mode}
-                grid={grid}
-                guides={guides}
-                dividing={busy}
-                onModeChange={setMode}
-                onGridChange={updateGrid}
-                onGuidesChange={updateGuides}
-                onDivide={handleDivide}
-                spacing={spacing}
-                onSpacingChange={setSpacing}
-              />
-              <ExportPanel
-                format={format}
-                quality={quality}
-                background={bgColor}
-                hasSlices={slices.length > 0}
-                busy={busy}
-                onFormatChange={setFormat}
-                onQualityChange={setQuality}
-                onBackgroundChange={setBgColor}
-                resize={resize}
-                onResizeChange={setResize}
-                referenceDpi={source.pdfDpi ?? 300}
-                onApply={handleDivide}
-                onDownloadZip={handleDownloadZip}
-              />
-              <PresetsPanel
-                presets={presets}
-                onSave={handleSavePreset}
-                onApply={handleApplyPreset}
-                onDelete={handleDeletePreset}
-              />
-              {notice && (
-                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-200">{notice}</div>
-              )}
-              {error && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-500/10 dark:text-red-300">{error}</div>
-              )}
+                <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
+                  {([
+                    { id: 'cut', label: '1. Cortes' },
+                    { id: 'crop', label: '2. Resize/Crop' },
+                    { id: 'export', label: '3. Formato' },
+                    { id: 'presets', label: `4. Presets (${presets.length})` },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setActiveTab(t.id)}
+                      className={`rounded-lg py-1.5 text-[11px] font-semibold transition ${
+                        activeTab === t.id
+                          ? 'bg-white text-indigo-600 shadow-xs dark:bg-slate-900 dark:text-indigo-400'
+                          : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-3">
+                {activeTab === 'cut' && (
+                  <>
+                    {source.pdfDpi != null && (
+                      <ResolutionPanel
+                        currentDpi={source.pdfDpi}
+                        width={source.width}
+                        height={source.height}
+                        busy={busy}
+                        onApply={handleApplyDpi}
+                        page={source.pdfPage ?? 1}
+                        numPages={source.pdfNumPages ?? 1}
+                        onPageChange={handlePdfPageChange}
+                      />
+                    )}
+                    <CutSettingsPanel
+                      source={source}
+                      mode={mode}
+                      grid={grid}
+                      guides={guides}
+                      dividing={busy}
+                      onModeChange={setMode}
+                      onGridChange={updateGrid}
+                      onGuidesChange={updateGuides}
+                      onDivide={handleDivide}
+                      spacing={spacing}
+                      onSpacingChange={setSpacing}
+                      hideAction
+                    />
+                  </>
+                )}
+
+                {activeTab === 'crop' && (
+                  <CropResizePanel
+                    source={source}
+                    crop={crop}
+                    cropAspect={cropAspect}
+                    targetWidth={targetDimensions.width}
+                    targetHeight={targetDimensions.height}
+                    lockAspect={lockAspect}
+                    sharpen={sharpen}
+                    format={format}
+                    quality={quality}
+                    dpi={source.pdfDpi ?? dpi}
+                    busy={busy}
+                    canRestoreOriginal={originalSource !== null && originalSource !== source}
+                    onCropChange={setCrop}
+                    onCropAspectChange={setCropAspect}
+                    onTargetDimensionsChange={(width, height) => setTargetDimensions({ width, height })}
+                    onLockAspectChange={setLockAspect}
+                    onSharpenChange={setSharpen}
+                    onFormatChange={setFormat}
+                    onQualityChange={setQuality}
+                    onApplyToCanvas={handleApplyCropResizeToCanvas}
+                    onRestoreOriginal={handleRestoreOriginalSource}
+                    onDownloadSingle={handleDownloadSingleImage}
+                    onCopySingle={handleCopySingleImage}
+                  />
+                )}
+
+                {activeTab === 'export' && (
+                  <ExportPanel
+                    format={format}
+                    quality={quality}
+                    background={bgColor}
+                    hasSlices={slices.length > 0}
+                    busy={busy}
+                    onFormatChange={setFormat}
+                    onQualityChange={setQuality}
+                    onBackgroundChange={setBgColor}
+                    resize={resize}
+                    onResizeChange={setResize}
+                    referenceDpi={source.pdfDpi ?? 300}
+                    onApply={handleDivide}
+                    onDownloadZip={handleDownloadZip}
+                    hideActions
+                  />
+                )}
+
+                {activeTab === 'presets' && (
+                  <PresetsPanel
+                    presets={presets}
+                    onSave={handleSavePreset}
+                    onApply={handleApplyPreset}
+                    onDelete={handleDeletePreset}
+                  />
+                )}
+              </div>
+
+              <div className="shrink-0 space-y-2 border-t border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/80">
+                {notice && (
+                  <div className="truncate rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-200" title={notice}>
+                    {notice}
+                  </div>
+                )}
+                {error && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-500/10 dark:text-red-300">
+                    {error}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDivide}
+                    disabled={busy}
+                    className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25"
+                  >
+                    {busy ? 'Procesando…' : 'Dividir (Ctrl+Enter)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadZip}
+                    disabled={busy}
+                    className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? 'Procesando…' : 'Descargar ZIP'}
+                  </button>
+                </div>
+              </div>
+            </aside>
+
+            {/* Centro: Lienzo Interactivo a Pantalla Completa */}
+            <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+              <Suspense fallback={<div className="flex flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Cargando lienzo…</div>}>
+                <ImageWorkspace
+                  source={source}
+                  mode={mode}
+                  grid={grid}
+                  guides={guides}
+                  onGuidesChange={updateGuides}
+                  spacing={spacing}
+                  canUndo={history.past.length > 0}
+                  canRedo={history.future.length > 0}
+                  onUndo={undo}
+                  onRedo={redo}
+                  previewOpen={previewOpen}
+                  slicesCount={slices.length}
+                  onTogglePreview={() => setPreviewOpen((o) => !o)}
+                  cropMode={activeTab === 'crop'}
+                  cropRect={crop}
+                  cropAspect={cropAspect}
+                  targetDimensions={targetDimensions}
+                  onCropChange={handleWorkspaceCropChange}
+                  onToggleCropMode={() => setActiveTab((t) => (t === 'crop' ? 'cut' : 'crop'))}
+                />
+              </Suspense>
             </div>
-            <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Cargando lienzo…</div>}>
-              <ImageWorkspace source={source} mode={mode} grid={grid} guides={guides} onGuidesChange={updateGuides} spacing={spacing} />
-            </Suspense>
+
+            {/* Derecha: Inspector de Cortes Generados */}
+            {previewOpen && (
+              <div className="w-full shrink-0 lg:h-full lg:w-[290px] xl:w-[320px]">
+                <PreviewPanel
+                  slices={slices}
+                  dpi={source.pdfDpi ?? 300}
+                  onDivide={handleDivide}
+                  busy={busy}
+                  onClose={() => setPreviewOpen(false)}
+                />
+              </div>
+            )}
           </div>
         )}
-        <PreviewPanel slices={slices} dpi={source?.pdfDpi ?? 300} />
       </main>
+
+      <CreditsModal
+        open={creditsModalOpen}
+        initialTab={creditsModalTab}
+        account={account}
+        transactions={transactions}
+        logs={processLogs}
+        requests={creditRequests}
+        onClose={() => setCreditsModalOpen(false)}
+        onAccountUpdated={() => {
+          void refreshAccount();
+        }}
+      />
 
       <ToastContainer toasts={toasts} onClose={removeToast} />
 
